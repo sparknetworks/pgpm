@@ -2,16 +2,66 @@
 # -*- coding: utf-8 -*-
 
 """
- Deployment script that will deploy Postgres schemas to a given DB
- Copyright (c) Affinitas GmbH
+Deployment script that will deploy Postgres schemas to a given DB
+Copyright (c) Affinitas GmbH
+ 
+Usage:
+  dpm.py deploy <connection_string>...
+  dpm.py -h | --help
+  dpm.py --version
+Options:
+  -h --help     Show this screen.
+  --version     Show version.
 
 """
 
 __all__ = ['dpm']
 __version__ = '0.0.1'
 
-print('Hello Python')
 
+import psycopg2
+import json
+from pprint import pprint
+from urllib.parse import urlparse
+from docopt import docopt
+
+if __name__ == '__main__':
+    arguments = docopt(__doc__, version=__version__)
+    if arguments['deploy']:
+        # Load project configuration file
+        print('Loading project configuration...')
+        config_json = open('config.json')
+        config_data = json.load(config_json)
+        print('Configuration of project {0} of version {1} loaded successfully.'.format(config_data['name'], config_data['version']))
+        config_json.close()
+        
+        # Connect to DB
+        print('\nConnecting to databases for deployment...')
+        pg_conn_str_parsed = urlparse(arguments.get('<connection_string>')[0])
+        pg_conn_username = pg_conn_str_parsed.username
+        pg_conn_password = pg_conn_str_parsed.password
+        pg_conn_database = pg_conn_str_parsed.path[1:]
+        pg_conn_hostname = pg_conn_str_parsed.hostname
+        try:
+#            conn = psycopg2.connect(
+#                database = pg_conn_database,
+#                user = pg_conn_username,
+#                password = pg_conn_password,
+#                host = pg_conn_hostname
+#            )
+            conn = psycopg2.connect(arguments['<connection_string>'][0])
+        except psycopg2.Error as e:
+            exit('Connection to DB failed ', e)
+        print('Connected to ', arguments['<connection_string>'][0])
+
+        print('\nClosing connection to {0}...'.format(arguments.get('<connection_string>')[0]))
+        conn.close()
+        print('Connection to {0} closed.'.format(arguments.get('<connection_string>')[0]))
+        
+    else:
+        print(arguments)
+
+              
 '''
 import os
 import sys
