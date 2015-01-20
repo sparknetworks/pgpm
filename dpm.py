@@ -6,13 +6,14 @@ Deployment script that will deploy Postgres schemas to a given DB
 Copyright (c) Affinitas GmbH
  
 Usage:
-  dpm.py deploy [-p | --production] <connection_string>...
+  dpm.py deploy [-p | --production] <connection_string>... [-f | --file <list_of_files>...]
   dpm.py -h | --help
   dpm.py -v | --version
 Options:
-  -h --help     Show this screen.
-  -v --version     Show version.
-  -p --production   Add constraints to deployment. Will not deploy versioned schema if it already exists in the DB
+  -h --help                         Show this screen.
+  -v --version                      Show version.
+  -p --production                   Add constraints to deployment. Will not deploy versioned schema if it already exists in the DB
+  -f <list_of_files>..., --file <list_of_files>...      Use it if you want to deploy only specific files (functions, types, etc). In that case these files if exist will be overriden. Should be followed by the list of names of files to deploy.
 
 """
 
@@ -20,8 +21,10 @@ __all__ = ['dpm']
 __version__ = '0.0.1'
 
 
+import os
 import psycopg2
 import json
+import sqlparse
 from pprint import pprint
 from urllib.parse import urlparse
 from docopt import docopt
@@ -56,8 +59,60 @@ if __name__ == '__main__':
         print('Configuration of project {0} of version {1} loaded successfully.'.format(config_data['name'], config_data['version']))
         config_json.close()
         
-        # Parse files to calculate order of execution
-        # 1. Get types        
+        # Get types files and calculate order of execution
+        if config_data['types_path']:
+            types_path = config_data['types_path']
+        else:
+            types_path = "types"
+        
+        print('Getting scripts with types definitions')
+        types_files_count = 0
+        types_script = ''
+        for subdir, dirs, files in os.walk(types_path):
+            for file in files:
+                if arguments['--file']: # if specific script to be deployed, only find them
+                    for list_file_name in arguments['--file']:
+                        if file == list_file_name:
+                            types_files_count += 1
+                            types_script += open(os.path.join(subdir, file), 'r', -1, 'UTF-8').read()
+                            types_script += '\n'
+                            print('{0}\n'.format(os.path.join(subdir, file)))
+                else: # if the whole schema to be deployed
+                    types_files_count += 1
+                    types_script += open(os.path.join(subdir, file), 'r', -1, 'UTF-8').read()
+                    types_script += '\n'
+                    print('{0}\n'.format(os.path.join(subdir, file)))
+        if types_files_count == 0:
+            print('No types definitions were found in {0} folder'.format(types_path))
+        
+        # Get functions scripts
+        if config_data['functions_path']:
+            functions_path = config_data['functions_path']
+        else:
+            functions_path = "functions"
+
+        print('Getting scripts with functions definitions')
+        functions_files_count = 0
+        functions_script = ''
+        for subdir, dirs, files in os.walk(functions_path):
+            for file in files:
+                if arguments['--file']: # if specific script to be deployed, only find them
+                    for list_file_name in arguments['--file']:
+#                        print('{0} -- {1}'.format(file, list_file_name))
+#                        print('{0}'.format(arguments['--file']))
+                        if file == list_file_name:
+                            functions_files_count += 1
+                            functions_script += open(os.path.join(subdir, file), 'r', -1, 'UTF-8').read()
+                            functions_script += '\n'
+                            print('{0}\n'.format(os.path.join(subdir, file)))
+                else: # if the whole schema to be deployed       
+                    functions_files_count += 1
+                    functions_script += open(os.path.join(subdir, file), 'r', -1, 'UTF-8').read()
+                    functions_script += '\n'
+                    print('{0}\n'.format(os.path.join(subdir, file)))
+        if functions_files_count == 0:
+            print('No functions definitions were found in {0} folder'.format(functions_path))
+
         
         # Connect to DB
         print('\nConnecting to databases for deployment...')
@@ -98,18 +153,49 @@ if __name__ == '__main__':
             
         # Create schema or update it if exists (if not in production mode) and set search path
         cur.execute("SELECT EXISTS (SELECT schema_name FROM information_schema.schemata WHERE schema_name = %s);", (schema_name,))
-        if not cur.fetchone()[0]:
-            create_db_schema(cur, schema_name)
-        elif arguments['--production'] == 1:
-            print('Schema already exists. It won\'t be overriden in production mode. Rerun your script without -p or --production flag')
-            close_db_conn(cur, conn, arguments.get('<connection_string>')[0])
-            exit()
+        schema_exists = cur.fetchone()[0]
+        if arguments['--file']: # if specific scripts to be deployed
+            if not schema_exists:
+                print('Can\'t deploy scripts to schema {0}. Schema doesn\'t exist in database'.format(schema_name))
+                close_db_conn(cur, conn, arguments.get('<connection_string>')[0])
+                exit()
         else:
-            _drop_schema_script = "\nDROP SCHEMA " + schema_name + " CASCADE;\n"
-            cur.execute(_drop_schema_script)
-            print('Droping old schema {0}'.format(schema_name))
+            if not schema_exists:
+                create_db_schema(cur, schema_name)
+            elif arguments['--production'] == 1:
+                print('Schema already exists. It won\'t be overriden in production mode. Rerun your script without -p or --production flag')
+                close_db_conn(cur, conn, arguments.get('<connection_string>')[0])
+                exit()
+            else:
+                _drop_schema_script = "\nDROP SCHEMA " + schema_name + " CASCADE;\n"
+                cur.execute(_drop_schema_script)
+                print('Droping old schema {0}'.format(schema_name))
+                create_db_schema(cur, schema_name)
+        
+        # Executing functions and types now
+        if types_files_count > 0:
+            if arguments['--file']:
+                print('Deploying types definition scripts in existing schema without droping it first is not support yet. Skipping')
+            else:
+                print('Running types definitions scripts')
+    #            print(sqlparse.split(types_script))
+    #            print('\n')
+    #            print(sqlparse.parse(types_script))
+    #            print('\n')
+    #            print(sqlparse.parse(types_script)[0].tokens)
+    #            print('\n')
+    #            print(str(sqlparse.parse(types_script)[0].tokens[-2]))
+                cur.execute(types_script)
+                print('Types loaded to schema {0}'.format(schema_name))
+        else:
+            print('No type scripts to deploy')
 
-            create_db_schema(cur, schema_name)
+        if functions_files_count > 0:
+            print('Running functions definitions scripts')
+            cur.execute(functions_script)
+            print('Functions loaded to schema {0}'.format(schema_name))
+        else:
+            print('No function scripts to deploy')
         
         # Commit transaction
         conn.commit()
