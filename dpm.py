@@ -53,7 +53,7 @@ if __name__ == '__main__':
     arguments = docopt(__doc__, version=__version__)
     if arguments['deploy']:
         # Load project configuration file
-        print('Loading project configuration...')
+        print('\nLoading project configuration...')
         config_json = open('config.json')
         config_data = json.load(config_json)
         print('Configuration of project {0} of version {1} loaded successfully.'.format(config_data['name'], config_data['version']))
@@ -65,7 +65,7 @@ if __name__ == '__main__':
         else:
             types_path = "types"
         
-        print('Getting scripts with types definitions')
+        print('\nGetting scripts with types definitions')
         types_files_count = 0
         types_script = ''
         for subdir, dirs, files in os.walk(types_path):
@@ -76,12 +76,12 @@ if __name__ == '__main__':
                             types_files_count += 1
                             types_script += open(os.path.join(subdir, file), 'r', -1, 'UTF-8').read()
                             types_script += '\n'
-                            print('{0}\n'.format(os.path.join(subdir, file)))
+                            print('{0}'.format(os.path.join(subdir, file)))
                 else: # if the whole schema to be deployed
                     types_files_count += 1
                     types_script += open(os.path.join(subdir, file), 'r', -1, 'UTF-8').read()
                     types_script += '\n'
-                    print('{0}\n'.format(os.path.join(subdir, file)))
+                    print('{0}'.format(os.path.join(subdir, file)))
         if types_files_count == 0:
             print('No types definitions were found in {0} folder'.format(types_path))
         
@@ -91,25 +91,23 @@ if __name__ == '__main__':
         else:
             functions_path = "functions"
 
-        print('Getting scripts with functions definitions')
+        print('\nGetting scripts with functions definitions')
         functions_files_count = 0
         functions_script = ''
         for subdir, dirs, files in os.walk(functions_path):
             for file in files:
                 if arguments['--file']: # if specific script to be deployed, only find them
                     for list_file_name in arguments['--file']:
-#                        print('{0} -- {1}'.format(file, list_file_name))
-#                        print('{0}'.format(arguments['--file']))
                         if file == list_file_name:
                             functions_files_count += 1
                             functions_script += open(os.path.join(subdir, file), 'r', -1, 'UTF-8').read()
                             functions_script += '\n'
-                            print('{0}\n'.format(os.path.join(subdir, file)))
+                            print('{0}'.format(os.path.join(subdir, file)))
                 else: # if the whole schema to be deployed       
                     functions_files_count += 1
                     functions_script += open(os.path.join(subdir, file), 'r', -1, 'UTF-8').read()
                     functions_script += '\n'
-                    print('{0}\n'.format(os.path.join(subdir, file)))
+                    print('{0}'.format(os.path.join(subdir, file)))
         if functions_files_count == 0:
             print('No functions definitions were found in {0} folder'.format(functions_path))
 
@@ -159,6 +157,10 @@ if __name__ == '__main__':
                 print('Can\'t deploy scripts to schema {0}. Schema doesn\'t exist in database'.format(schema_name))
                 close_db_conn(cur, conn, arguments.get('<connection_string>')[0])
                 exit()
+            else:
+                _set_search_path_schema_script = "SET search_path TO " + schema_name + ", public;"
+                cur.execute(_set_search_path_schema_script)
+                print('Search_path was changed to schema {0}. The following script was executed: {1}'.format(schema_name, _set_search_path_schema_script))
         else:
             if not schema_exists:
                 create_db_schema(cur, schema_name)
@@ -178,13 +180,18 @@ if __name__ == '__main__':
                 print('Deploying types definition scripts in existing schema without droping it first is not support yet. Skipping')
             else:
                 print('Running types definitions scripts')
-    #            print(sqlparse.split(types_script))
-    #            print('\n')
-    #            print(sqlparse.parse(types_script))
-    #            print('\n')
-    #            print(sqlparse.parse(types_script)[0].tokens)
-    #            print('\n')
-    #            print(str(sqlparse.parse(types_script)[0].tokens[-2]))
+                print('1. Reordering types definitions scripts to avoid "type does not exist" exceptions')
+                _type_statements = sqlparse.split(types_script)
+                for _type_statement in _type_statements:
+                    print(_type_statement)
+                    _type_statement_parsed = sqlparse.parse(_type_statement)
+                    if len(_type_statement_parsed) > 0: # can be empty parsed object so need to check
+                        if _type_statement_parsed[0].get_type() == 'CREATE': # we need only type declarations to be ordered
+                            for _type_statement_token in _type_statement_parsed[0].tokens:
+                                if _type_statement_token.ttype == None: # if it's not a keyword (that's how it's defined in sqlparse)
+                                    for _type_body_part in _type_statement_token.flatten():
+                                        if not _type_body_part.is_whitespace():
+                                            print(_type_body_part)
                 cur.execute(types_script)
                 print('Types loaded to schema {0}'.format(schema_name))
         else:
