@@ -38,12 +38,13 @@ def close_db_conn(cur, conn, conn_string):
     conn.close()
     print('Connection to {0} closed.'.format(conn_string))
     
-def create_db_schema(cur, schema_name):
+def create_db_schema(cur, schema_name, users, owner):
     """
     Create Postgres schema script and execute it on cursor
     """
     _create_schema_script = "\nCREATE SCHEMA " + schema_name + " ;\n"
-    _create_schema_script += "GRANT USAGE ON SCHEMA " + schema_name + " TO public;\n"
+    _create_schema_script += "GRANT USAGE ON SCHEMA " + schema_name + " TO " + users + ";\n"
+    _create_schema_script += "ALTER SCHEMA " + schema_name + " OWNER TO " + owner + ";\n"
     _create_schema_script += "SET search_path TO " + schema_name + ", public;"
     cur.execute(_create_schema_script)
     print('Schema {0} was created and search_path was changed. The following script was executed: {1}'.format(schema_name, _create_schema_script))
@@ -163,7 +164,7 @@ if __name__ == '__main__':
                 print('Search_path was changed to schema {0}. The following script was executed: {1}'.format(schema_name, _set_search_path_schema_script))
         else:
             if not schema_exists:
-                create_db_schema(cur, schema_name)
+                create_db_schema(cur, schema_name, ", ".join(config_data['user_role']), config_data['owner_role'])
             elif arguments['--production'] == 1:
                 print('Schema already exists. It won\'t be overriden in production mode. Rerun your script without -p or --production flag')
                 close_db_conn(cur, conn, arguments.get('<connection_string>')[0])
@@ -172,31 +173,79 @@ if __name__ == '__main__':
                 _drop_schema_script = "\nDROP SCHEMA " + schema_name + " CASCADE;\n"
                 cur.execute(_drop_schema_script)
                 print('Droping old schema {0}'.format(schema_name))
-                create_db_schema(cur, schema_name)
+                create_db_schema(cur, schema_name, ", ".join(config_data['user_role']), config_data['owner_role'])
         
-        # Executing functions and types now
+        # Reordering and executing types
         if types_files_count > 0:
             if arguments['--file']:
                 print('Deploying types definition scripts in existing schema without droping it first is not support yet. Skipping')
             else:
                 print('Running types definitions scripts')
-                print('1. Reordering types definitions scripts to avoid "type does not exist" exceptions')
+                print('Reordering types definitions scripts to avoid "type does not exist" exceptions')
                 _type_statements = sqlparse.split(types_script)
+                _type_statements_dict = {} # dictionary that store statements with type and order. TODO: move up to classes
+                type_unordered_scripts = [] #scripts to execute without order
                 for _type_statement in _type_statements:
-                    print(_type_statement)
                     _type_statement_parsed = sqlparse.parse(_type_statement)
                     if len(_type_statement_parsed) > 0: # can be empty parsed object so need to check
                         if _type_statement_parsed[0].get_type() == 'CREATE': # we need only type declarations to be ordered
                             for _type_statement_token in _type_statement_parsed[0].tokens:
                                 if _type_statement_token.ttype == None: # if it's not a keyword (that's how it's defined in sqlparse)
+                                    _type_body_part_counter = 0 # we need counter cause we know that first entrance is the name of the type
                                     for _type_body_part in _type_statement_token.flatten():
                                         if not _type_body_part.is_whitespace():
-                                            print(_type_body_part)
-                cur.execute(types_script)
+                                            if _type_body_part_counter == 0:
+                                                _type_statements_dict[str(_type_body_part)] = {'script': _type_statement, 'deps': []}
+                                            _type_body_part_counter += 1
+                        else:
+                            type_unordered_scripts.append(_type_statement)
+                # now let's add dependant types to dictionary with types
+                _type_statements_list = [] # list of statements to be ordered
+                for _type_key in _type_statements_dict.keys():
+                    for _type_key_sub, _type_value in _type_statements_dict.items():
+                        if _type_key != _type_key_sub:
+                            if _type_key in _type_value['script']:
+                                _type_value['deps'].append(_type_key)
+                # now let's add order to type scripts and put them orsered to list
+                _deps_unresolved = True
+                _type_script_order = 0
+                _type_names = []
+                type_ordered_scripts = [] # ordered list with scripts to execute
+                while _deps_unresolved:
+                    for k, v in _type_statements_dict.items():
+                        if v['deps'] == []:
+                            _type_names.append(k)
+                            v['order'] = _type_script_order
+                            _type_script_order += 1
+                            if not v['script'] in type_ordered_scripts:
+                                type_ordered_scripts.append(v['script'])
+                        else:
+                            _dep_exists = True
+                            for _dep in v['deps']:
+                                if not _dep in _type_names:
+                                    _dep_exists = False
+                            if _dep_exists:
+                                _type_names.append(k)
+                                v['order'] = _type_script_order
+                                _type_script_order += 1
+                                if not v['script'] in type_ordered_scripts:
+                                    type_ordered_scripts.append(v['script'])
+                            else:
+                                v['order'] = -1
+                    _deps_unresolved = False
+                    for k, v in _type_statements_dict.items():
+                        if v['order'] == -1:
+                            _deps_unresolved = True
+                
+                #print('\n'.join(type_ordered_scripts)) # uncomment for debug
+                cur.execute('\n'.join(type_ordered_scripts))
+                #print('\n'.join(type_unordered_scripts)) # uncomment for debug
+                cur.execute('\n'.join(type_unordered_scripts))
                 print('Types loaded to schema {0}'.format(schema_name))
         else:
             print('No type scripts to deploy')
 
+        # Executing functions
         if functions_files_count > 0:
             print('Running functions definitions scripts')
             cur.execute(functions_script)
