@@ -4,7 +4,7 @@
 """
 Deployment script that will deploy Postgres schemas to a given DB
 Copyright (c) Affinitas GmbH
- 
+
 Usage:
   dpm.py deploy [-p | --production] <connection_string>... [-f | --file <list_of_files>...]
   dpm.py -h | --help
@@ -25,6 +25,7 @@ import os
 import psycopg2
 import json
 import sqlparse
+import re
 from pprint import pprint
 from urllib.parse import urlparse
 from docopt import docopt
@@ -37,7 +38,7 @@ def close_db_conn(cur, conn, conn_string):
     cur.close()
     conn.close()
     print('Connection to {0} closed.'.format(conn_string))
-    
+
 def create_db_schema(cur, schema_name, users, owner):
     """
     Create Postgres schema script and execute it on cursor
@@ -48,8 +49,13 @@ def create_db_schema(cur, schema_name, users, owner):
     _create_schema_script += "SET search_path TO " + schema_name + ", public;"
     cur.execute(_create_schema_script)
     print('Schema {0} was created and search_path was changed. The following script was executed: {1}'.format(schema_name, _create_schema_script))
-    
-    
+
+def find_whole_word(w):
+    """
+    Finds whole word
+    """
+    return re.compile(r'\b({0})\b'.format(w), flags=re.IGNORECASE).search
+
 if __name__ == '__main__':
     arguments = docopt(__doc__, version=__version__)
     if arguments['deploy']:
@@ -59,13 +65,13 @@ if __name__ == '__main__':
         config_data = json.load(config_json)
         print('Configuration of project {0} of version {1} loaded successfully.'.format(config_data['name'], config_data['version']))
         config_json.close()
-        
+
         # Get types files and calculate order of execution
         if config_data['types_path']:
             types_path = config_data['types_path']
         else:
             types_path = "types"
-        
+
         print('\nGetting scripts with types definitions')
         types_files_count = 0
         types_script = ''
@@ -85,7 +91,7 @@ if __name__ == '__main__':
                     print('{0}'.format(os.path.join(subdir, file)))
         if types_files_count == 0:
             print('No types definitions were found in {0} folder'.format(types_path))
-        
+
         # Get functions scripts
         if config_data['functions_path']:
             functions_path = config_data['functions_path']
@@ -104,7 +110,7 @@ if __name__ == '__main__':
                             functions_script += open(os.path.join(subdir, file), 'r', -1, 'UTF-8').read()
                             functions_script += '\n'
                             print('{0}'.format(os.path.join(subdir, file)))
-                else: # if the whole schema to be deployed       
+                else: # if the whole schema to be deployed
                     functions_files_count += 1
                     functions_script += open(os.path.join(subdir, file), 'r', -1, 'UTF-8').read()
                     functions_script += '\n'
@@ -112,7 +118,7 @@ if __name__ == '__main__':
         if functions_files_count == 0:
             print('No functions definitions were found in {0} folder'.format(functions_path))
 
-        
+
         # Connect to DB
         print('\nConnecting to databases for deployment...')
         pg_conn_str_parsed = urlparse(arguments.get('<connection_string>')[0])
@@ -149,7 +155,7 @@ if __name__ == '__main__':
         elif config_data['subclass'] == 'non-versioned':
             schema_name = '{0}'.format(config_data['name'])
             print('Schema {0} will be created/replaced'.format(schema_name))
-            
+
         # Create schema or update it if exists (if not in production mode) and set search path
         cur.execute("SELECT EXISTS (SELECT schema_name FROM information_schema.schemata WHERE schema_name = %s);", (schema_name,))
         schema_exists = cur.fetchone()[0]
@@ -174,7 +180,7 @@ if __name__ == '__main__':
                 cur.execute(_drop_schema_script)
                 print('Droping old schema {0}'.format(schema_name))
                 create_db_schema(cur, schema_name, ", ".join(config_data['user_role']), config_data['owner_role'])
-        
+
         # Reordering and executing types
         if types_files_count > 0:
             if arguments['--file']:
@@ -204,7 +210,7 @@ if __name__ == '__main__':
                 for _type_key in _type_statements_dict.keys():
                     for _type_key_sub, _type_value in _type_statements_dict.items():
                         if _type_key != _type_key_sub:
-                            if _type_key in _type_value['script']:
+                            if find_whole_word(_type_key)(_type_value['script']):
                                 _type_value['deps'].append(_type_key)
                 # now let's add order to type scripts and put them orsered to list
                 _deps_unresolved = True
@@ -236,11 +242,13 @@ if __name__ == '__main__':
                     for k, v in _type_statements_dict.items():
                         if v['order'] == -1:
                             _deps_unresolved = True
-                
+
                 #print('\n'.join(type_ordered_scripts)) # uncomment for debug
-                cur.execute('\n'.join(type_ordered_scripts))
+                if type_ordered_scripts:
+                    cur.execute('\n'.join(type_ordered_scripts))
                 #print('\n'.join(type_unordered_scripts)) # uncomment for debug
-                cur.execute('\n'.join(type_unordered_scripts))
+                if type_unordered_scripts:
+                    cur.execute('\n'.join(type_unordered_scripts))
                 print('Types loaded to schema {0}'.format(schema_name))
         else:
             print('No type scripts to deploy')
@@ -252,11 +260,11 @@ if __name__ == '__main__':
             print('Functions loaded to schema {0}'.format(schema_name))
         else:
             print('No function scripts to deploy')
-        
+
         # Commit transaction
         conn.commit()
-        
+
         close_db_conn(cur, conn, arguments.get('<connection_string>')[0])
-        
+
     else:
         print(arguments)
