@@ -18,8 +18,6 @@ Options:
 """
 
 __all__ = ['dpm']
-__version__ = '0.0.1'
-
 
 import os
 import psycopg2
