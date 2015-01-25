@@ -3,6 +3,7 @@
 # This setup script is part of dpm packcage and is released under
 # the MIT License: http://opensource.org/licenses/MIT
 
+import os
 import re
 import sys
 from setuptools import setup
@@ -12,7 +13,7 @@ def get_version():
     """parse __init__.py for version number instead of importing the file
     see http://stackoverflow.com/questions/458550/standard-way-to-embed-version-into-python-package
     """
-    VERSIONFILE = os.path.join(PKG, '__init__.py')
+    VERSIONFILE = os.path.join(PKG, '_version.py')
     verstrline = open(VERSIONFILE, "rt").read()
     VSRE = r'^__version__ = [\'"]([^\'"]*)[\'"]'
     mo = re.search(VSRE, verstrline, re.M)
@@ -52,7 +53,7 @@ setup(
     url='https://github.com/affinitas/dpm',
     packages=['dpm'],
     long_description=open('README.rst').read(),
-    install_requires  = ['docopt', 'psychopg2', 'sqlparse', 'urllib.parse'],
+    install_requires  = ['docopt', 'psycopg2', 'sqlparse'],
     classifiers=[
         'Development Status :: 3 - Alpha',
         'Environment :: Console',
@@ -72,5 +73,10 @@ setup(
         ],
     cmdclass={
             'test': PyTestCommand,
-        }
+        },
+    entry_points={
+        'console_scripts': [
+            'dpm=dpm.deploy:main',
+        ],
+    }
 )

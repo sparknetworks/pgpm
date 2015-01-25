@@ -17,15 +17,13 @@ Options:
 
 """
 
-__all__ = ['dpm']
-
 import os
 import psycopg2
 import json
 import sqlparse
 import re
+from dpm import _version
 from pprint import pprint
-from urllib.parse import urlparse
 from docopt import docopt
 
 def close_db_conn(cur, conn, conn_string):
@@ -54,8 +52,8 @@ def find_whole_word(w):
     """
     return re.compile(r'\b({0})\b'.format(w), flags=re.IGNORECASE).search
 
-if __name__ == '__main__':
-    arguments = docopt(__doc__, version=__version__)
+def main():
+    arguments = docopt(__doc__, version = _version.__version__)
     if arguments['deploy']:
         # Load project configuration file
         print('\nLoading project configuration...')
@@ -119,11 +117,6 @@ if __name__ == '__main__':
 
         # Connect to DB
         print('\nConnecting to databases for deployment...')
-        pg_conn_str_parsed = urlparse(arguments.get('<connection_string>')[0])
-        pg_conn_username = pg_conn_str_parsed.username
-        pg_conn_password = pg_conn_str_parsed.password
-        pg_conn_database = pg_conn_str_parsed.path[1:]
-        pg_conn_hostname = pg_conn_str_parsed.hostname
         try:
             conn = psycopg2.connect(arguments['<connection_string>'][0])
             cur = conn.cursor()
@@ -266,3 +259,6 @@ if __name__ == '__main__':
 
     else:
         print(arguments)
+
+if __name__ == '__main__':
+    main()
