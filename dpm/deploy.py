@@ -48,8 +48,10 @@ import json
 import sqlparse
 import re
 import sys
+import io
 if sys.version_info[0] == 2:
     import codecs
+import pprint
 from dpm import _version
 from pprint import pprint
 from docopt import docopt
@@ -87,7 +89,6 @@ def main():
     user_roles = arguments['--user']
     owner_role = arguments['--owner']
     if arguments['deploy']:
-        print(arguments)
         # Load project configuration file
         print('\nLoading project configuration...')
         config_json = open('config.json')
@@ -110,18 +111,12 @@ def main():
                     for list_file_name in arguments['--file']:
                         if file == list_file_name:
                             types_files_count += 1
-                            if sys.version_info[0] == 3:
-                                types_script += open(os.path.join(subdir, file), 'r', -1, 'UTF-8').read()
-                            else:
-                                types_script += codecs.open(os.path.join(subdir, file), 'r', 'UTF-8').read()
+                            types_script += io.open(os.path.join(subdir, file), 'r', -1, 'utf-8-sig').read()
                             types_script += '\n'
                             print('{0}'.format(os.path.join(subdir, file)))
                 else: # if the whole schema to be deployed
                     types_files_count += 1
-                    if sys.version_info[0] == 3:
-                        types_script += open(os.path.join(subdir, file), 'r', -1, 'UTF-8').read()
-                    else:
-                        types_script += codecs.open(os.path.join(subdir, file), 'r', 'UTF-8').read()
+                    types_script += io.open(os.path.join(subdir, file), 'r', -1, 'utf-8-sig').read()
                     types_script += '\n'
                     print('{0}'.format(os.path.join(subdir, file)))
         if types_files_count == 0:
@@ -142,18 +137,12 @@ def main():
                     for list_file_name in arguments['--file']:
                         if file == list_file_name:
                             functions_files_count += 1
-                            if sys.version_info[0] == 3:
-                                functions_script += open(os.path.join(subdir, file), 'r', -1, 'UTF-8').read()
-                            else:
-                                functions_script += codecs.open(os.path.join(subdir, file), 'r', 'UTF-8').read()
+                            functions_script += io.open(os.path.join(subdir, file), 'r', -1, 'utf-8-sig').read()
                             functions_script += '\n'
                             print('{0}'.format(os.path.join(subdir, file)))
                 else: # if the whole schema to be deployed
                     functions_files_count += 1
-                    if sys.version_info[0] == 3:
-                        functions_script += open(os.path.join(subdir, file), 'r', -1, 'UTF-8').read()
-                    else:
-                        functions_script += codecs.open(os.path.join(subdir, file), 'r', 'UTF-8').read()
+                    functions_script += io.open(os.path.join(subdir, file), 'r', -1, 'utf-8-sig').read()
                     functions_script += '\n'
                     print('{0}'.format(os.path.join(subdir, file)))
         if functions_files_count == 0:
@@ -166,7 +155,8 @@ def main():
             conn = psycopg2.connect(arguments['<connection_string>'])
             cur = conn.cursor()
         except psycopg2.Error as e:
-            exit('Connection to DB failed ', e)
+            print('Connection to DB failed. Traceback: \n{0}'.format(e))
+            exit(1)
         print('Connected to ', arguments['<connection_string>'])
 
         # Prepare and execute preamble
@@ -280,9 +270,9 @@ def main():
                             _deps_unresolved = True
 
                 #print('\n'.join(type_ordered_scripts)) # uncomment for debug
+                #print('\n'.join(type_unordered_scripts)) # uncomment for debug
                 if type_ordered_scripts:
                     cur.execute('\n'.join(type_ordered_scripts))
-                #print('\n'.join(type_unordered_scripts)) # uncomment for debug
                 if type_unordered_scripts:
                     cur.execute('\n'.join(type_unordered_scripts))
                 print('Types loaded to schema {0}'.format(schema_name))
