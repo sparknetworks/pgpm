@@ -7,7 +7,7 @@ Copyright (c) Affinitas GmbH
 
 Usage:
   dpm.py deploy <connection_string> [-m | --mode <mode>]
-                [-o | --owner <owner_role>] [-u | -user <user_role>...] 
+                [-o | --owner <owner_role>] [-u | --user <user_role>...] 
                 [-f | --file <file_name>...]
   dpm.py -h | --help
   dpm.py -v | --version
@@ -29,15 +29,15 @@ Options:
                             Role to which schema owner will be changed. User connecting to DB 
                             needs to be a superuser. If ommited, user running the script 
                             will the owner of schema
-  -u <user_role>..., -user <user_role>...       
+  -u <user_role>..., --user <user_role>...       
                             Roles to which GRANT USAGE privelage will be applied. 
                             If ommited, default behaviour of DB applies
   -m <mode>, --mode <mode>  Deployment mode. Can be:
-                            - safe. Add constraints to deployment. Will not deploy schema 
+                            * safe. Add constraints to deployment. Will not deploy schema 
                             if it already exists in the DB
-                            - moderate. If schema exists, will try to rename it by adding suffix "_"
+                            * moderate. If schema exists, will try to rename it by adding suffix "_"
                             and deploy new schema with old name
-                            - unsafe. allows cascade deleting of schema if it exists and adding new one
+                            * unsafe. allows cascade deleting of schema if it exists and adding new one
                             [default: safe]
 
 """
@@ -47,6 +47,9 @@ import psycopg2
 import json
 import sqlparse
 import re
+import sys
+if sys.version_info[0] == 2:
+    import codecs
 from dpm import _version
 from pprint import pprint
 from docopt import docopt
@@ -64,9 +67,11 @@ def create_db_schema(cur, schema_name, users, owner):
     """
     Create Postgres schema script and execute it on cursor
     """
-    _create_schema_script = "\nCREATE SCHEMA " + schema_name + " ;\n"
-    _create_schema_script += "GRANT USAGE ON SCHEMA " + schema_name + " TO " + users + ";\n"
-    _create_schema_script += "ALTER SCHEMA " + schema_name + " OWNER TO " + owner + ";\n"
+    _create_schema_script = "\nCREATE SCHEMA " + schema_name + ";\n"
+    if users:
+        _create_schema_script += "GRANT USAGE ON SCHEMA " + schema_name + " TO " + users + ";\n"
+    if owner:
+        _create_schema_script += "ALTER SCHEMA " + schema_name + " OWNER TO " + owner + ";\n"
     _create_schema_script += "SET search_path TO " + schema_name + ", public;"
     cur.execute(_create_schema_script)
     print('Schema {0} was created and search_path was changed. The following script was executed: {1}'.format(schema_name, _create_schema_script))
@@ -79,7 +84,10 @@ def find_whole_word(w):
 
 def main():
     arguments = docopt(__doc__, version = _version.__version__)
+    user_roles = arguments['--user']
+    owner_role = arguments['--owner']
     if arguments['deploy']:
+        print(arguments)
         # Load project configuration file
         print('\nLoading project configuration...')
         config_json = open('config.json')
@@ -102,12 +110,18 @@ def main():
                     for list_file_name in arguments['--file']:
                         if file == list_file_name:
                             types_files_count += 1
-                            types_script += open(os.path.join(subdir, file), 'r', -1, 'UTF-8').read()
+                            if sys.version_info[0] == 3:
+                                types_script += open(os.path.join(subdir, file), 'r', -1, 'UTF-8').read()
+                            else:
+                                types_script += codecs.open(os.path.join(subdir, file), 'r', 'UTF-8').read()
                             types_script += '\n'
                             print('{0}'.format(os.path.join(subdir, file)))
                 else: # if the whole schema to be deployed
                     types_files_count += 1
-                    types_script += open(os.path.join(subdir, file), 'r', -1, 'UTF-8').read()
+                    if sys.version_info[0] == 3:
+                        types_script += open(os.path.join(subdir, file), 'r', -1, 'UTF-8').read()
+                    else:
+                        types_script += codecs.open(os.path.join(subdir, file), 'r', 'UTF-8').read()
                     types_script += '\n'
                     print('{0}'.format(os.path.join(subdir, file)))
         if types_files_count == 0:
@@ -128,12 +142,18 @@ def main():
                     for list_file_name in arguments['--file']:
                         if file == list_file_name:
                             functions_files_count += 1
-                            functions_script += open(os.path.join(subdir, file), 'r', -1, 'UTF-8').read()
+                            if sys.version_info[0] == 3:
+                                functions_script += open(os.path.join(subdir, file), 'r', -1, 'UTF-8').read()
+                            else:
+                                functions_script += codecs.open(os.path.join(subdir, file), 'r', 'UTF-8').read()
                             functions_script += '\n'
                             print('{0}'.format(os.path.join(subdir, file)))
                 else: # if the whole schema to be deployed
                     functions_files_count += 1
-                    functions_script += open(os.path.join(subdir, file), 'r', -1, 'UTF-8').read()
+                    if sys.version_info[0] == 3:
+                        functions_script += open(os.path.join(subdir, file), 'r', -1, 'UTF-8').read()
+                    else:
+                        functions_script += codecs.open(os.path.join(subdir, file), 'r', 'UTF-8').read()
                     functions_script += '\n'
                     print('{0}'.format(os.path.join(subdir, file)))
         if functions_files_count == 0:
@@ -168,7 +188,7 @@ def main():
         if config_data['subclass'] == 'versioned':
             schema_name = '{0}_{1}'.format(config_data['name'], config_data['version'])
             print('Schema {0} will be updated'.format(schema_name))
-        elif config_data['subclass'] == 'non-versioned':
+        elif config_data['subclass'] == 'basic':
             schema_name = '{0}'.format(config_data['name'])
             print('Schema {0} will be created/replaced'.format(schema_name))
 
@@ -186,16 +206,16 @@ def main():
                 print('Search_path was changed to schema {0}. The following script was executed: {1}'.format(schema_name, _set_search_path_schema_script))
         else:
             if not schema_exists:
-                create_db_schema(cur, schema_name, ", ".join(config_data['user_role']), config_data['owner_role'])
-            elif arguments['--production'] == 1:
-                print('Schema already exists. It won\'t be overriden in production mode. Rerun your script without -p or --production flag')
+                create_db_schema(cur, schema_name, ", ".join(user_roles), owner_role[0])
+            elif arguments['--mode'][0] == 'safe':
+                print('Schema already exists. It won\'t be overriden in safe mode. Rerun your script without "-m moderate" or "-m unsafe" flags')
                 close_db_conn(cur, conn, arguments.get('<connection_string>'))
                 exit()
             else:
                 _drop_schema_script = "\nDROP SCHEMA " + schema_name + " CASCADE;\n"
                 cur.execute(_drop_schema_script)
                 print('Droping old schema {0}'.format(schema_name))
-                create_db_schema(cur, schema_name, ", ".join(config_data['user_role']), config_data['owner_role'])
+                create_db_schema(cur, schema_name, ", ".join(user_roles), owner_role[0])
 
         # Reordering and executing types
         if types_files_count > 0:
