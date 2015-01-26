@@ -6,14 +6,39 @@ Deployment script that will deploy Postgres schemas to a given DB
 Copyright (c) Affinitas GmbH
 
 Usage:
-  dpm.py deploy [-p | --production] <connection_string>... [-f | --file <list_of_files>...]
+  dpm.py deploy <connection_string> [-m | --mode <mode>]
+                [-o | --owner <owner_role>] [-u | -user <user_role>...] 
+                [-f | --file <file_name>...]
   dpm.py -h | --help
   dpm.py -v | --version
+  
+Arguments:
+  <connection_string>       Connection string to postgres database. 
+                            Can be in any format psycopg2 would understand it
+  
 Options:
-  -h --help                         Show this screen.
-  -v --version                      Show version.
-  -p --production                   Add constraints to deployment. Will not deploy versioned schema if it already exists in the DB
-  -f <list_of_files>..., --file <list_of_files>...      Use it if you want to deploy only specific files (functions, types, etc). In that case these files if exist will be overriden. Should be followed by the list of names of files to deploy.
+  -h --help                 Show this screen.
+  -v --version              Show version.
+  -p --production           Add constraints to deployment. Will not deploy versioned schema 
+                            if it already exists in the DB
+  -f <file_name>..., --file <file_name>...      
+                            Use it if you want to deploy only specific files (functions, types, etc). 
+                            In that case these files if exist will be overriden. 
+                            Should be followed by the list of names of files to deploy.
+  -o <owner_role>, --owner <owner_role>         
+                            Role to which schema owner will be changed. User connecting to DB 
+                            needs to be a superuser. If ommited, user running the script 
+                            will the owner of schema
+  -u <user_role>..., -user <user_role>...       
+                            Roles to which GRANT USAGE privelage will be applied. 
+                            If ommited, default behaviour of DB applies
+  -m <mode>, --mode <mode>  Deployment mode. Can be:
+                            - safe. Add constraints to deployment. Will not deploy schema 
+                            if it already exists in the DB
+                            - moderate. If schema exists, will try to rename it by adding suffix "_"
+                            and deploy new schema with old name
+                            - unsafe. allows cascade deleting of schema if it exists and adding new one
+                            [default: safe]
 
 """
 
@@ -118,11 +143,11 @@ def main():
         # Connect to DB
         print('\nConnecting to databases for deployment...')
         try:
-            conn = psycopg2.connect(arguments['<connection_string>'][0])
+            conn = psycopg2.connect(arguments['<connection_string>'])
             cur = conn.cursor()
         except psycopg2.Error as e:
             exit('Connection to DB failed ', e)
-        print('Connected to ', arguments['<connection_string>'][0])
+        print('Connected to ', arguments['<connection_string>'])
 
         # Prepare and execute preamble
         _deploymeny_script_preamble = "--\n"            \
@@ -153,7 +178,7 @@ def main():
         if arguments['--file']: # if specific scripts to be deployed
             if not schema_exists:
                 print('Can\'t deploy scripts to schema {0}. Schema doesn\'t exist in database'.format(schema_name))
-                close_db_conn(cur, conn, arguments.get('<connection_string>')[0])
+                close_db_conn(cur, conn, arguments.get('<connection_string>'))
                 exit()
             else:
                 _set_search_path_schema_script = "SET search_path TO " + schema_name + ", public;"
@@ -164,7 +189,7 @@ def main():
                 create_db_schema(cur, schema_name, ", ".join(config_data['user_role']), config_data['owner_role'])
             elif arguments['--production'] == 1:
                 print('Schema already exists. It won\'t be overriden in production mode. Rerun your script without -p or --production flag')
-                close_db_conn(cur, conn, arguments.get('<connection_string>')[0])
+                close_db_conn(cur, conn, arguments.get('<connection_string>'))
                 exit()
             else:
                 _drop_schema_script = "\nDROP SCHEMA " + schema_name + " CASCADE;\n"
@@ -255,7 +280,7 @@ def main():
         # Commit transaction
         conn.commit()
 
-        close_db_conn(cur, conn, arguments.get('<connection_string>')[0])
+        close_db_conn(cur, conn, arguments.get('<connection_string>'))
 
     else:
         print(arguments)
