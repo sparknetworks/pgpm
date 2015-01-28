@@ -157,18 +157,10 @@ def main():
         except psycopg2.Error as e:
             print('Connection to DB failed. Traceback: \n{0}'.format(e))
             exit(1)
-        print('Connected to ', arguments['<connection_string>'])
+        print('Connected to {0}'.format(arguments['<connection_string>']))
 
         # Prepare and execute preamble
-        _deploymeny_script_preamble = "--\n"            \
-            "-- Start of composed deployment script\n"  \
-            "-- \n"                                     \
-            "SET statement_timeout = 0;\n"              \
-            "SET client_encoding = 'UTF8';\n"           \
-            "SET standard_conforming_strings = off;\n"  \
-            "SET check_function_bodies = false;\n"      \
-            "SET client_min_messages = warning;\n"      \
-            "SET escape_string_warning = off;\n"
+        _deploymeny_script_preamble = io.open('scripts/deploy_prepare_config.sql', 'r', -1, 'utf-8-sig').read()
         print('Executing a preamble to deployment statement')
         print(_deploymeny_script_preamble)
         cur.execute(_deploymeny_script_preamble)
@@ -201,6 +193,20 @@ def main():
                 print('Schema already exists. It won\'t be overriden in safe mode. Rerun your script without "-m moderate" or "-m unsafe" flags')
                 close_db_conn(cur, conn, arguments.get('<connection_string>'))
                 exit()
+            elif arguments['--mode'][0] == 'moderate':
+                _old_schema_exists = True
+                _old_schema_rev = 0
+                while _old_schema_exists:
+                    cur.execute("SELECT EXISTS (SELECT schema_name FROM information_schema.schemata WHERE schema_name = %s);", (schema_name + '_' + str(_old_schema_rev),))
+                    _old_schema_exists = cur.fetchone()[0]
+                    if _old_schema_exists:
+                        _old_schema_rev += 1
+                _old_schema_name = schema_name + '_' + str(_old_schema_rev)
+                print('Schema already exists. It will be renamed to {0} in moderate mode. Renaming...'.format(_old_schema_name))
+                _rename_schema_script = "\nALTER SCHEMA " + schema_name + " RENAME TO " + _old_schema_name + ";\n"
+                cur.execute(_rename_schema_script)
+                print('Schema {0} was renamed to {1}.'.format(schema_name, _old_schema_name))
+                create_db_schema(cur, schema_name, ", ".join(user_roles), owner_role[0])
             else:
                 _drop_schema_script = "\nDROP SCHEMA " + schema_name + " CASCADE;\n"
                 cur.execute(_drop_schema_script)
