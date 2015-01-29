@@ -72,7 +72,7 @@ def create_db_schema(cur, schema_name, users, owner):
     """
     _create_schema_script = "\nCREATE SCHEMA " + schema_name + ";\n"
     if users:
-        _create_schema_script += "GRANT USAGE ON SCHEMA " + schema_name + " TO " + users + ";\n"
+        _create_schema_script += "GRANT USAGE ON SCHEMA " + schema_name + " TO " + ", ".join(users) + ";\n"
     if owner:
         _create_schema_script += "ALTER SCHEMA " + schema_name + " OWNER TO " + owner + ";\n"
     _create_schema_script += "SET search_path TO " + schema_name + ", public;"
@@ -88,7 +88,10 @@ def find_whole_word(w):
 def main():
     arguments = docopt(__doc__, version = _version.__version__)
     user_roles = arguments['--user']
-    owner_role = arguments['--owner']
+    if arguments['--owner']:
+        owner_role = arguments['--owner'][0]
+    else:
+        owner_role = ''
     if arguments['deploy']:
         # Load project configuration file
         print('\nLoading project configuration...')
@@ -98,7 +101,7 @@ def main():
         config_json.close()
 
         # Get types files and calculate order of execution
-        if config_data['types_path']:
+        if 'types_path' in config_data:
             types_path = config_data['types_path']
         else:
             types_path = "types"
@@ -124,7 +127,7 @@ def main():
             print('No types definitions were found in {0} folder'.format(types_path))
 
         # Get functions scripts
-        if config_data['functions_path']:
+        if 'functions_path' in config_data:
             functions_path = config_data['functions_path']
         else:
             functions_path = "functions"
@@ -192,7 +195,7 @@ def main():
                 print('Search_path was changed to schema {0}. The following script was executed: {1}'.format(schema_name, _set_search_path_schema_script))
         else:
             if not schema_exists:
-                create_db_schema(cur, schema_name, ", ".join(user_roles), owner_role[0])
+                create_db_schema(cur, schema_name, ", ".join(user_roles), owner_role)
             elif arguments['--mode'][0] == 'safe':
                 print('Schema already exists. It won\'t be overriden in safe mode. Rerun your script without "-m moderate" or "-m unsafe" flags')
                 close_db_conn(cur, conn, arguments.get('<connection_string>'))
@@ -210,12 +213,12 @@ def main():
                 _rename_schema_script = "\nALTER SCHEMA " + schema_name + " RENAME TO " + _old_schema_name + ";\n"
                 cur.execute(_rename_schema_script)
                 print('Schema {0} was renamed to {1}.'.format(schema_name, _old_schema_name))
-                create_db_schema(cur, schema_name, ", ".join(user_roles), owner_role[0])
+                create_db_schema(cur, schema_name, user_roles, owner_role)
             else:
                 _drop_schema_script = "\nDROP SCHEMA " + schema_name + " CASCADE;\n"
                 cur.execute(_drop_schema_script)
                 print('Droping old schema {0}'.format(schema_name))
-                create_db_schema(cur, schema_name, ", ".join(user_roles), owner_role[0])
+                create_db_schema(cur, schema_name, user_roles, owner_role)
 
         # Reordering and executing types
         if types_files_count > 0:
