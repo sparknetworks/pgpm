@@ -49,6 +49,7 @@ import sqlparse
 import re
 import sys
 import io
+import pkgutil
 if sys.version_info[0] == 2:
     import codecs
 import pprint
@@ -160,7 +161,7 @@ def main():
         print('Connected to {0}'.format(arguments['<connection_string>']))
 
         # Prepare and execute preamble
-        _deploymeny_script_preamble = io.open('scripts/deploy_prepare_config.sql', 'r', -1, 'utf-8-sig').read()
+        _deploymeny_script_preamble = pkgutil.get_data('dpm', 'scripts/deploy_prepare_config.sql')
         print('Executing a preamble to deployment statement')
         print(_deploymeny_script_preamble)
         cur.execute(_deploymeny_script_preamble)
@@ -172,8 +173,11 @@ def main():
             print('Schema {0} will be updated'.format(schema_name))
         elif config_data['subclass'] == 'basic':
             schema_name = '{0}'.format(config_data['name'])
-            print('Schema {0} will be created/replaced'.format(schema_name))
-
+            if not arguments['--file']:
+                print('Schema {0} will be created/replaced'.format(schema_name))
+            else:
+                print('Schema {0} will be updated'.format(schema_name))
+                
         # Create schema or update it if exists (if not in production mode) and set search path
         cur.execute("SELECT EXISTS (SELECT schema_name FROM information_schema.schemata WHERE schema_name = %s);", (schema_name,))
         schema_exists = cur.fetchone()[0]

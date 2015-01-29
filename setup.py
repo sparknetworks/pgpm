@@ -78,5 +78,8 @@ setup(
         'console_scripts': [
             'dpm=dpm.deploy:main',
         ],
-    }
+    },
+    package_data={
+        'dpm': ['scripts/*']
+    }    
 )
