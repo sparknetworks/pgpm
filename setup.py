@@ -78,5 +78,8 @@ setup(
         'console_scripts': [
             'dpm=dpm.deploy:main',
         ],
-    }
+    },
+    package_data={
+        'prepare': ['scripts/deploy_prepare_config.sql'],
+    }    
 )

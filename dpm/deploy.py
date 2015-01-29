@@ -49,6 +49,7 @@ import sqlparse
 import re
 import sys
 import io
+import pkgutil
 if sys.version_info[0] == 2:
     import codecs
 import pprint
@@ -160,7 +161,7 @@ def main():
         print('Connected to {0}'.format(arguments['<connection_string>']))
 
         # Prepare and execute preamble
-        _deploymeny_script_preamble = io.open('scripts/deploy_prepare_config.sql', 'r', -1, 'utf-8-sig').read()
+        _deploymeny_script_preamble = io.open(pkgutil.get_data('prepare', 'scripts/deploy_prepare_config.sql'), 'r', -1, 'utf-8-sig').read()
         print('Executing a preamble to deployment statement')
         print(_deploymeny_script_preamble)
         cur.execute(_deploymeny_script_preamble)
