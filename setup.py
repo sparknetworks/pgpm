@@ -80,6 +80,6 @@ setup(
         ],
     },
     package_data={
-        'prepare': ['scripts/deploy_prepare_config.sql'],
+        'dpm': ['scripts/*']
     }    
 )
