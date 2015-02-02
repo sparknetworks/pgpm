@@ -6,11 +6,11 @@ Deployment script that will deploy Postgres schemas to a given DB
 Copyright (c) Affinitas GmbH
 
 Usage:
-  dpm.py deploy <connection_string> [-m | --mode <mode>]
+  pgpm.py deploy <connection_string> [-m | --mode <mode>]
                 [-o | --owner <owner_role>] [-u | --user <user_role>...] 
                 [-f | --file <file_name>...]
-  dpm.py -h | --help
-  dpm.py -v | --version
+  pgpm.py -h | --help
+  pgpm.py -v | --version
   
 Arguments:
   <connection_string>       Connection string to postgres database. 
@@ -53,7 +53,7 @@ import pkgutil
 if sys.version_info[0] == 2:
     import codecs
 import pprint
-from dpm import _version
+from pgpm import _version
 from pprint import pprint
 from docopt import docopt
 
@@ -169,7 +169,7 @@ def main():
         print('Connected to {0}'.format(arguments['<connection_string>']))
 
         # Prepare and execute preamble
-        _deployment_script_preamble = pkgutil.get_data('dpm', 'scripts/deploy_prepare_config.sql')
+        _deployment_script_preamble = pkgutil.get_data('pgpm', 'scripts/deploy_prepare_config.sql')
         print('Executing a preamble to deployment statement')
         print(_deployment_script_preamble)
         cur.execute(_deployment_script_preamble)
