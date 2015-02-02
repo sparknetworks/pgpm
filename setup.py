@@ -1,6 +1,6 @@
 # Copyright (C) 2015 Affinitas GmbH
 #
-# This setup script is part of dpm packcage and is released under
+# This setup script is part of pgpm packcage and is released under
 # the MIT License: http://opensource.org/licenses/MIT
 
 import os
@@ -24,7 +24,7 @@ def get_version():
                            % (VERSIONFILE,))
 
 
-PKG = "dpm"
+PKG = "pgpm"
 
 VERSION = get_version()
 
@@ -43,15 +43,15 @@ class PyTestCommand(TestCommand):
 
 
 setup(
-    name='dpm',
+    name='pgpm',
     version=VERSION,
     author='Artem Panchoyan',
     author_email='artem.panchoyan@gmail.com',
     description='Postgres package manager',
     license='MIT',
     keywords='postgres database package deploying',
-    url='https://github.com/affinitas/dpm',
-    packages=['dpm'],
+    url='https://github.com/affinitas/pgpm',
+    packages=['pgpm'],
     long_description=open('README.rst').read(),
     install_requires  = ['docopt', 'psycopg2', 'sqlparse'],
     classifiers=[
@@ -76,10 +76,10 @@ setup(
         },
     entry_points={
         'console_scripts': [
-            'dpm=dpm.deploy:main',
+            'pgpm=pgpm.deploy:main',
         ],
     },
     package_data={
-        'dpm': ['scripts/*']
+        'pgpm': ['scripts/*']
     }    
 )
