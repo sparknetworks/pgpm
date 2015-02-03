@@ -9,6 +9,7 @@ import sys
 from setuptools import setup
 from setuptools.command.test import test as TestCommand
 
+
 def get_version():
     """parse __init__.py for version number instead of importing the file
     see http://stackoverflow.com/questions/458550/standard-way-to-embed-version-into-python-package
@@ -28,9 +29,11 @@ PKG = "pgpm"
 
 VERSION = get_version()
 
+
 class PyTestCommand(TestCommand):
     """ Command to run unit py.test unit tests
     """
+
     def finalize_options(self):
         TestCommand.finalize_options(self)
         self.test_args = []
@@ -38,6 +41,7 @@ class PyTestCommand(TestCommand):
 
     def run(self):
         import pytest
+
         rcode = pytest.main(self.test_args)
         sys.exit(rcode)
 
@@ -53,7 +57,7 @@ setup(
     url='https://github.com/affinitas/pgpm',
     packages=['pgpm'],
     long_description=open('README.rst').read(),
-    install_requires  = ['docopt', 'psycopg2', 'sqlparse'],
+    install_requires=['docopt', 'psycopg2', 'sqlparse'],
     classifiers=[
         'Development Status :: 3 - Alpha',
         'Environment :: Console',
@@ -69,11 +73,11 @@ setup(
         'Topic :: Database'
     ],
     tests_require=[
-            'pytest',
-        ],
+        'pytest',
+    ],
     cmdclass={
-            'test': PyTestCommand,
-        },
+        'test': PyTestCommand,
+    },
     entry_points={
         'console_scripts': [
             'pgpm=pgpm.deploy:main',
@@ -81,5 +85,5 @@ setup(
     },
     package_data={
         'pgpm': ['scripts/*']
-    }    
+    }
 )
