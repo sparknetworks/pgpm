@@ -6,5 +6,4 @@ python:
   - "3.3"
   - "3.4"
 
-script:
-  # nothing to run yet
+script: nosetests
