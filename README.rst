@@ -1,5 +1,5 @@
-pgpm
-====
+pgpm https://travis-ci.org/affinitas/pgpm.svg?branch=master
+===========================================================
 ``pgpm`` is a package manager for Postgres database.
 It provides support for schema deploying and schema versioning.
 TODO: provide support for DDL evolutions and dependancy management.
