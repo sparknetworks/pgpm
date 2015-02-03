@@ -1,5 +1,5 @@
-pgpm
-====
+pgpm |build-status|
+===================
 ``pgpm`` is a package manager for Postgres database.
 It provides support for schema deploying and schema versioning.
 TODO: provide support for DDL evolutions and dependancy management.
@@ -10,3 +10,6 @@ Installation
 ------------
 ``pip install pgpm``
 
+.. |build-status| image:: https://travis-ci.org/affinitas/pgpm.svg?branch=master
+   :target: https://travis-ci.org/affinitas/pgpm
+   :alt: Build status
