@@ -10,6 +10,6 @@ Installation
 ------------
 ``pip install pgpm``
 
-.. |build-status| image:: https://travis-ci.org/affinitas/pgpm.svg?branch=master
+.. |build-status| image:: https://travis-ci.org/affinitas/pgpm.svg?branch=develop
    :target: https://travis-ci.org/affinitas/pgpm
    :alt: Build status
