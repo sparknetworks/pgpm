@@ -6,11 +6,13 @@ Deployment script that will deploy Postgres schemas to a given DB
 Copyright (c) Affinitas GmbH
 
 Usage:
-  pgpm.py deploy <connection_string> [-m | --mode <mode>]
+  pgpm deploy <connection_string> [-m | --mode <mode>]
                 [-o | --owner <owner_role>] [-u | --user <user_role>...] 
                 [-f | --file <file_name>...]
-  pgpm.py -h | --help
-  pgpm.py -v | --version
+  pgpm install <connection_string>
+  pgpm uninstall <connection_string>
+  pgpm -h | --help
+  pgpm -v | --version
   
 Arguments:
   <connection_string>       Connection string to postgres database. 
@@ -52,9 +54,7 @@ import io
 import pkgutil
 if sys.version_info[0] == 2:
     import codecs
-import pprint
 from pgpm import _version
-from pprint import pprint
 from docopt import docopt
 
 
@@ -90,6 +90,125 @@ def find_whole_word(w):
     return re.compile(r'\b({0})\b'.format(w), flags=re.IGNORECASE).search
 
 
+def collect_scripts_from_files(script_path, is_by_file_deployment):
+    """
+    Collects postgres scripts from source files
+    """
+    script_files_count = 0
+    script = ''
+    for subdir, dirs, files in os.walk(script_path):
+        for file_info in files:
+            if is_by_file_deployment:  # if specific script to be deployed, only find them
+                for list_file_name in is_by_file_deployment:
+                    if file_info == list_file_name:
+                        script_files_count += 1
+                        script += io.open(os.path.join(subdir, file_info), 'r', -1, 'utf-8-sig').read()
+                        script += '\n'
+                        print('{0}'.format(os.path.join(subdir, file_info)))
+            else:  # if the whole schema to be deployed
+                script_files_count += 1
+                script += io.open(os.path.join(subdir, file_info), 'r', -1, 'utf-8-sig').read()
+                script += '\n'
+                print('{0}'.format(os.path.join(subdir, file_info)))
+    return script, script_files_count
+
+
+def reorder_types(types_script):
+    """
+    Takes type scripts and reorders them to avoid Type doesn't exist exception
+    """
+    print('Running types definitions scripts')
+    print('Reordering types definitions scripts to avoid "type does not exist" exceptions')
+    _type_statements = sqlparse.split(types_script)
+    # TODO: move up to classes
+    _type_statements_dict = {}  # dictionary that store statements with type and order.
+    type_unordered_scripts = []  # scripts to execute without order
+    for _type_statement in _type_statements:
+        _type_statement_parsed = sqlparse.parse(_type_statement)
+        if len(_type_statement_parsed) > 0:  # can be empty parsed object so need to check
+            # we need only type declarations to be ordered
+            if _type_statement_parsed[0].get_type() == 'CREATE':
+                for _type_statement_token in _type_statement_parsed[0].tokens:
+                    # if it's not a keyword (that's how it's defined in sqlparse)
+                    if _type_statement_token.ttype is None:
+                        # we need counter cause we know that first entrance is the name of the type
+                        _type_body_part_counter = 0
+                        for _type_body_part in _type_statement_token.flatten():
+                            if not _type_body_part.is_whitespace():
+                                if _type_body_part_counter == 0:
+                                    _type_statements_dict[str(_type_body_part)] = \
+                                        {'script': _type_statement, 'deps': []}
+                                _type_body_part_counter += 1
+            else:
+                type_unordered_scripts.append(_type_statement)
+    # now let's add dependant types to dictionary with types
+    _type_statements_list = []  # list of statements to be ordered
+    for _type_key in _type_statements_dict.keys():
+        for _type_key_sub, _type_value in _type_statements_dict.items():
+            if _type_key != _type_key_sub:
+                if find_whole_word(_type_key)(_type_value['script']):
+                    _type_value['deps'].append(_type_key)
+    # now let's add order to type scripts and put them ordered to list
+    _deps_unresolved = True
+    _type_script_order = 0
+    _type_names = []
+    type_ordered_scripts = []  # ordered list with scripts to execute
+    while _deps_unresolved:
+        for k, v in _type_statements_dict.items():
+            if not v['deps']:
+                _type_names.append(k)
+                v['order'] = _type_script_order
+                _type_script_order += 1
+                if not v['script'] in type_ordered_scripts:
+                    type_ordered_scripts.append(v['script'])
+            else:
+                _dep_exists = True
+                for _dep in v['deps']:
+                    if _dep not in _type_names:
+                        _dep_exists = False
+                if _dep_exists:
+                    _type_names.append(k)
+                    v['order'] = _type_script_order
+                    _type_script_order += 1
+                    if not v['script'] in type_ordered_scripts:
+                        type_ordered_scripts.append(v['script'])
+                else:
+                    v['order'] = -1
+        _deps_unresolved = False
+        for k, v in _type_statements_dict.items():
+            if v['order'] == -1:
+                _deps_unresolved = True
+    return type_ordered_scripts, type_unordered_scripts
+
+
+def install_manager(connection_string):
+    """
+    Installs package manager
+    """
+    # Connect to DB
+    print('\nConnecting to databases for deployment...')
+    try:
+        conn = psycopg2.connect(connection_string)
+        cur = conn.cursor()
+    except psycopg2.Error as e:
+        print('Connection to DB failed. Traceback: \n{0}'.format(e))
+        exit(1)
+    print('Connected to {0}'.format(connection_string))
+
+    # Create schema if it doesn't exist
+    cur.execute("SELECT EXISTS (SELECT schema_name FROM information_schema.schemata WHERE schema_name = '_pgpm');")
+    schema_exists = cur.fetchone()[0]
+    if schema_exists:
+        print('Can\'t install pgpm as schema _pgpm already exists')
+        close_db_conn(cur, conn, connection_string)
+        exit()
+    else:
+        _install_script = pkgutil.get_data('pgpm', 'scripts/install.sql')
+        print('Installing package manager')
+        print(_install_script)
+        cur.execute(_install_script)
+
+
 def main():
     arguments = docopt(__doc__, version=_version.__version__)
     user_roles = arguments['--user']
@@ -97,6 +216,11 @@ def main():
         owner_role = arguments['--owner'][0]
     else:
         owner_role = ''
+    is_by_file_deployment = False
+    if arguments['--file']:  # if specific script to be deployed, only find them
+        is_by_file_deployment = True
+    if arguments['install']:
+        install_manager(arguments['<connection_string>'])
     if arguments['deploy']:
         # Load project configuration file
         print('\nLoading project configuration...')
@@ -113,22 +237,7 @@ def main():
             types_path = "types"
 
         print('\nGetting scripts with types definitions')
-        types_files_count = 0
-        types_script = ''
-        for subdir, dirs, files in os.walk(types_path):
-            for file in files:
-                if arguments['--file']:  # if specific script to be deployed, only find them
-                    for list_file_name in arguments['--file']:
-                        if file == list_file_name:
-                            types_files_count += 1
-                            types_script += io.open(os.path.join(subdir, file), 'r', -1, 'utf-8-sig').read()
-                            types_script += '\n'
-                            print('{0}'.format(os.path.join(subdir, file)))
-                else:  # if the whole schema to be deployed
-                    types_files_count += 1
-                    types_script += io.open(os.path.join(subdir, file), 'r', -1, 'utf-8-sig').read()
-                    types_script += '\n'
-                    print('{0}'.format(os.path.join(subdir, file)))
+        types_script, types_files_count = collect_scripts_from_files(types_path, is_by_file_deployment)
         if types_files_count == 0:
             print('No types definitions were found in {0} folder'.format(types_path))
 
@@ -139,22 +248,7 @@ def main():
             functions_path = "functions"
 
         print('\nGetting scripts with functions definitions')
-        functions_files_count = 0
-        functions_script = ''
-        for subdir, dirs, files in os.walk(functions_path):
-            for file in files:
-                if arguments['--file']:  # if specific script to be deployed, only find them
-                    for list_file_name in arguments['--file']:
-                        if file == list_file_name:
-                            functions_files_count += 1
-                            functions_script += io.open(os.path.join(subdir, file), 'r', -1, 'utf-8-sig').read()
-                            functions_script += '\n'
-                            print('{0}'.format(os.path.join(subdir, file)))
-                else:  # if the whole schema to be deployed
-                    functions_files_count += 1
-                    functions_script += io.open(os.path.join(subdir, file), 'r', -1, 'utf-8-sig').read()
-                    functions_script += '\n'
-                    print('{0}'.format(os.path.join(subdir, file)))
+        functions_script, functions_files_count = collect_scripts_from_files(functions_path, is_by_file_deployment)
         if functions_files_count == 0:
             print('No functions definitions were found in {0} folder'.format(functions_path))
 
@@ -236,68 +330,7 @@ def main():
                 print('Deploying types definition scripts in existing schema without dropping it first '
                       'is not support yet. Skipping')
             else:
-                print('Running types definitions scripts')
-                print('Reordering types definitions scripts to avoid "type does not exist" exceptions')
-                _type_statements = sqlparse.split(types_script)
-                # TODO: move up to classes
-                _type_statements_dict = {}  # dictionary that store statements with type and order.
-                type_unordered_scripts = []  # scripts to execute without order
-                for _type_statement in _type_statements:
-                    _type_statement_parsed = sqlparse.parse(_type_statement)
-                    if len(_type_statement_parsed) > 0:  # can be empty parsed object so need to check
-                        # we need only type declarations to be ordered
-                        if _type_statement_parsed[0].get_type() == 'CREATE':
-                            for _type_statement_token in _type_statement_parsed[0].tokens:
-                                # if it's not a keyword (that's how it's defined in sqlparse)
-                                if _type_statement_token.ttype is None:
-                                    # we need counter cause we know that first entrance is the name of the type
-                                    _type_body_part_counter = 0
-                                    for _type_body_part in _type_statement_token.flatten():
-                                        if not _type_body_part.is_whitespace():
-                                            if _type_body_part_counter == 0:
-                                                _type_statements_dict[str(_type_body_part)] = \
-                                                    {'script': _type_statement, 'deps': []}
-                                            _type_body_part_counter += 1
-                        else:
-                            type_unordered_scripts.append(_type_statement)
-                # now let's add dependant types to dictionary with types
-                _type_statements_list = []  # list of statements to be ordered
-                for _type_key in _type_statements_dict.keys():
-                    for _type_key_sub, _type_value in _type_statements_dict.items():
-                        if _type_key != _type_key_sub:
-                            if find_whole_word(_type_key)(_type_value['script']):
-                                _type_value['deps'].append(_type_key)
-                # now let's add order to type scripts and put them orsered to list
-                _deps_unresolved = True
-                _type_script_order = 0
-                _type_names = []
-                type_ordered_scripts = []  # ordered list with scripts to execute
-                while _deps_unresolved:
-                    for k, v in _type_statements_dict.items():
-                        if not v['deps']:
-                            _type_names.append(k)
-                            v['order'] = _type_script_order
-                            _type_script_order += 1
-                            if not v['script'] in type_ordered_scripts:
-                                type_ordered_scripts.append(v['script'])
-                        else:
-                            _dep_exists = True
-                            for _dep in v['deps']:
-                                if _dep not in _type_names:
-                                    _dep_exists = False
-                            if _dep_exists:
-                                _type_names.append(k)
-                                v['order'] = _type_script_order
-                                _type_script_order += 1
-                                if not v['script'] in type_ordered_scripts:
-                                    type_ordered_scripts.append(v['script'])
-                            else:
-                                v['order'] = -1
-                    _deps_unresolved = False
-                    for k, v in _type_statements_dict.items():
-                        if v['order'] == -1:
-                            _deps_unresolved = True
-
+                type_ordered_scripts, type_unordered_scripts = reorder_types(types_script)
                 # print('\n'.join(type_ordered_scripts)) # uncomment for debug
                 # print('\n'.join(type_unordered_scripts)) # uncomment for debug
                 if type_ordered_scripts:
