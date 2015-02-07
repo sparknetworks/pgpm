@@ -1,5 +1,8 @@
 #### Custom entries
 .idea/
+bin/
+include/
+lib/
 
 #### joe made this: https://goel.io/joe
 
