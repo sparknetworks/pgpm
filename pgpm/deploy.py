@@ -205,8 +205,12 @@ def install_manager(connection_string):
     else:
         _install_script = pkgutil.get_data('pgpm', 'scripts/install.sql')
         print('Installing package manager')
-        print(_install_script)
         cur.execute(_install_script)
+
+    # Commit transaction
+    conn.commit()
+
+    close_db_conn(cur, conn, connection_string)
 
 
 def main():
@@ -221,7 +225,7 @@ def main():
         is_by_file_deployment = True
     if arguments['install']:
         install_manager(arguments['<connection_string>'])
-    if arguments['deploy']:
+    elif arguments['deploy']:
         # Load project configuration file
         print('\nLoading project configuration...')
         config_json = open('config.json')
