@@ -7,35 +7,35 @@ Copyright (c) Affinitas GmbH
 
 Usage:
   pgpm deploy <connection_string> [-m | --mode <mode>]
-                [-o | --owner <owner_role>] [-u | --user <user_role>...] 
+                [-o | --owner <owner_role>] [-u | --user <user_role>...]
                 [-f | --file <file_name>...]
   pgpm install <connection_string>
   pgpm uninstall <connection_string>
   pgpm -h | --help
   pgpm -v | --version
-  
+
 Arguments:
-  <connection_string>       Connection string to postgres database. 
+  <connection_string>       Connection string to postgres database.
                             Can be in any format psycopg2 would understand it
-  
+
 Options:
   -h --help                 Show this screen.
   -v --version              Show version.
-  -p --production           Add constraints to deployment. Will not deploy versioned schema 
+  -p --production           Add constraints to deployment. Will not deploy versioned schema
                             if it already exists in the DB
-  -f <file_name>..., --file <file_name>...      
-                            Use it if you want to deploy only specific files (functions, types, etc). 
+  -f <file_name>..., --file <file_name>...
+                            Use it if you want to deploy only specific files (functions, types, etc).
                             In that case these files if exist will be overridden.
                             Should be followed by the list of names of files to deploy.
-  -o <owner_role>, --owner <owner_role>         
-                            Role to which schema owner will be changed. User connecting to DB 
+  -o <owner_role>, --owner <owner_role>
+                            Role to which schema owner will be changed. User connecting to DB
                             needs to be a superuser. If omitted, user running the script
                             will the owner of schema
-  -u <user_role>..., --user <user_role>...       
+  -u <user_role>..., --user <user_role>...
                             Roles to which GRANT USAGE privilege will be applied.
                             If omitted, default behaviour of DB applies
   -m <mode>, --mode <mode>  Deployment mode. Can be:
-                            * safe. Add constraints to deployment. Will not deploy schema 
+                            * safe. Add constraints to deployment. Will not deploy schema
                             if it already exists in the DB
                             * moderate. If schema exists, will try to rename it by adding suffix "_"
                             and deploy new schema with old name
@@ -90,7 +90,7 @@ def find_whole_word(w):
     return re.compile(r'\b({0})\b'.format(w), flags=re.IGNORECASE).search
 
 
-def collect_scripts_from_files(script_path, is_by_file_deployment):
+def collect_scripts_from_files(script_path, files_deployment):
     """
     Collects postgres scripts from source files
     """
@@ -98,8 +98,8 @@ def collect_scripts_from_files(script_path, is_by_file_deployment):
     script = ''
     for subdir, dirs, files in os.walk(script_path):
         for file_info in files:
-            if is_by_file_deployment:  # if specific script to be deployed, only find them
-                for list_file_name in is_by_file_deployment:
+            if files_deployment:  # if specific script to be deployed, only find them
+                for list_file_name in files_deployment:
                     if file_info == list_file_name:
                         script_files_count += 1
                         script += io.open(os.path.join(subdir, file_info), 'r', -1, 'utf-8-sig').read()
@@ -220,9 +220,7 @@ def main():
         owner_role = arguments['--owner'][0]
     else:
         owner_role = ''
-    is_by_file_deployment = False
-    if arguments['--file']:  # if specific script to be deployed, only find them
-        is_by_file_deployment = True
+    files_deployment = arguments['--file']  # if specific script to be deployed, only find them
     if arguments['install']:
         install_manager(arguments['<connection_string>'])
     elif arguments['deploy']:
@@ -241,7 +239,7 @@ def main():
             types_path = "types"
 
         print('\nGetting scripts with types definitions')
-        types_script, types_files_count = collect_scripts_from_files(types_path, is_by_file_deployment)
+        types_script, types_files_count = collect_scripts_from_files(types_path, files_deployment)
         if types_files_count == 0:
             print('No types definitions were found in {0} folder'.format(types_path))
 
@@ -252,7 +250,7 @@ def main():
             functions_path = "functions"
 
         print('\nGetting scripts with functions definitions')
-        functions_script, functions_files_count = collect_scripts_from_files(functions_path, is_by_file_deployment)
+        functions_script, functions_files_count = collect_scripts_from_files(functions_path, files_deployment)
         if functions_files_count == 0:
             print('No functions definitions were found in {0} folder'.format(functions_path))
 
