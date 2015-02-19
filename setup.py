@@ -11,18 +11,19 @@ from setuptools.command.test import test as TestCommand
 
 
 def get_version():
-    """parse __init__.py for version number instead of importing the file
+    """
+    parse __init__.py for version number instead of importing the file
     see http://stackoverflow.com/questions/458550/standard-way-to-embed-version-into-python-package
     """
-    VERSIONFILE = os.path.join(PKG, '_version.py')
-    verstrline = open(VERSIONFILE, "rt").read()
-    VSRE = r'^__version__ = [\'"]([^\'"]*)[\'"]'
-    mo = re.search(VSRE, verstrline, re.M)
+    version_file = os.path.join(PKG, '_version.py')
+    ver_str_line = open(version_file, "rt").read()
+    version_regex = r'^__version__ = [\'"]([^\'"]*)[\'"]'
+    mo = re.search(version_regex, ver_str_line, re.M)
     if mo:
         return mo.group(1)
     else:
         raise RuntimeError('Unable to find version string in %s.'
-                           % (VERSIONFILE,))
+                           % (version_file,))
 
 
 PKG = "pgpm"
