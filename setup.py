@@ -55,7 +55,7 @@ setup(
     license='MIT',
     keywords='postgres database package deploying',
     url='https://github.com/affinitas/pgpm',
-    packages=['pgpm'],
+    packages=['pgpm', 'pgpm.utils'],
     long_description=open('README.rst').read(),
     install_requires=['docopt', 'psycopg2', 'sqlparse'],
     classifiers=[
