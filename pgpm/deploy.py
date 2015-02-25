@@ -91,31 +91,33 @@ def find_whole_word(w):
     return re.compile(r'\b({0})\b'.format(w), flags=re.IGNORECASE).search
 
 
-def collect_scripts_from_files(script_path, files_deployment):
+def collect_scripts_from_files(script_paths, files_deployment):
     """
     Collects postgres scripts from source files
     """
     script_files_count = 0
     script = ''
-    for subdir, dirs, files in os.walk(script_path):
-        # print(subdir, dirs)  # uncomment for debugging
-        for file_info in files:
-            if files_deployment:  # if specific script to be deployed, only find them
-                for list_file_name in files_deployment:
-                    # if subdir in files_deployment:
-                    #     if file_info == list_file_name
-                    if file_info == list_file_name:
+    if script_paths:
+        for script_path in script_paths:
+            for subdir, dirs, files in os.walk(script_path):
+                # print(subdir, dirs)  # uncomment for debugging
+                for file_info in files:
+                    if files_deployment:  # if specific script to be deployed, only find them
+                        for list_file_name in files_deployment:
+                            # if subdir in files_deployment:
+                            #     if file_info == list_file_name
+                            if file_info == list_file_name:
+                                script_files_count += 1
+                                script += io.open(os.path.join(subdir, file_info), 'r', -1, 'utf-8-sig').read()
+                                script += '\n'
+                                print(TermStyle.PREFIX_INFO_IMPORTANT + TermStyle.BOLD_ON +
+                                      '{0}'.format(os.path.join(subdir, file_info)) + TermStyle.RESET)
+                    else:  # if the whole schema to be deployed
                         script_files_count += 1
                         script += io.open(os.path.join(subdir, file_info), 'r', -1, 'utf-8-sig').read()
                         script += '\n'
                         print(TermStyle.PREFIX_INFO_IMPORTANT + TermStyle.BOLD_ON +
                               '{0}'.format(os.path.join(subdir, file_info)) + TermStyle.RESET)
-            else:  # if the whole schema to be deployed
-                script_files_count += 1
-                script += io.open(os.path.join(subdir, file_info), 'r', -1, 'utf-8-sig').read()
-                script += '\n'
-                print(TermStyle.PREFIX_INFO_IMPORTANT + TermStyle.BOLD_ON +
-                      '{0}'.format(os.path.join(subdir, file_info)) + TermStyle.RESET)
     return script, script_files_count
 
 
@@ -237,23 +239,29 @@ def main():
         if 'types_path' in config_data:
             types_path = config_data['types_path']
         else:
-            types_path = "types"
+            types_path = None
 
         print(TermStyle.PREFIX_INFO + 'Getting scripts with types definitions')
         types_script, types_files_count = collect_scripts_from_files(types_path, files_deployment)
-        if types_files_count == 0:
-            print(TermStyle.PREFIX_WARNING + 'No types definitions were found in {0} folder'.format(types_path))
+        if types_path:
+            if types_files_count == 0:
+                print(TermStyle.PREFIX_WARNING + 'No types definitions were found in {0} folder'.format(types_path))
+        else:
+            print(TermStyle.PREFIX_INFO + 'No types folder was specified')
 
         # Get functions scripts
         if 'functions_path' in config_data:
             functions_path = config_data['functions_path']
         else:
-            functions_path = "functions"
+            functions_path = None
 
         print(TermStyle.PREFIX_INFO + 'Getting scripts with functions definitions')
         functions_script, functions_files_count = collect_scripts_from_files(functions_path, files_deployment)
-        if functions_files_count == 0:
-            print(TermStyle.PREFIX_WARNING + 'No functions definitions were found in {0} folder'.format(functions_path))
+        if functions_path:
+            if functions_files_count == 0:
+                print(TermStyle.PREFIX_WARNING + 'No functions definitions were found in {0} folder'.format(functions_path))
+        else:
+            print(TermStyle.PREFIX_INFO + 'No functions folder was specified')
 
         # Connect to DB
         print(TermStyle.PREFIX_INFO + 'Connecting to databases for deployment...')
