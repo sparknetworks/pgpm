@@ -1,0 +1,1 @@
+PGPM_SCHEMA_NAME = "_pgpm"
