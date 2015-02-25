@@ -275,6 +275,20 @@ def main():
         else:
             print(TermStyle.PREFIX_INFO + 'No functions folder was specified')
 
+        # Get views scripts
+        if 'views_path' in config_data:
+            views_path = config_data['views_path']
+        else:
+            views_path = None
+
+        print(TermStyle.PREFIX_INFO + 'Getting scripts with views definitions')
+        views_script, views_files_count = collect_scripts_from_files(views_path, files_deployment)
+        if views_path:
+            if views_files_count == 0:
+                print(TermStyle.PREFIX_WARNING + 'No views definitions were found in {0} folder'.format(views_path))
+        else:
+            print(TermStyle.PREFIX_INFO + 'No views folder was specified')
+
         # Connect to DB
         print(TermStyle.PREFIX_INFO + 'Connecting to databases for deployment...')
         try:
@@ -377,6 +391,15 @@ def main():
             print(TermStyle.PREFIX_INFO + 'Functions loaded to schema {0}'.format(schema_name))
         else:
             print(TermStyle.PREFIX_INFO + 'No function scripts to deploy')
+
+        # Executing views
+        if views_files_count > 0:
+            print(TermStyle.PREFIX_INFO + 'Running views definitions scripts')
+            # print(TermStyle.HEADER + functions_script)
+            cur.execute(views_script)
+            print(TermStyle.PREFIX_INFO + 'Views loaded to schema {0}'.format(schema_name))
+        else:
+            print(TermStyle.PREFIX_INFO + 'No view scripts to deploy')
 
         # Commit transaction
         conn.commit()
