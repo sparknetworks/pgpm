@@ -8,7 +8,7 @@ Copyright (c) Affinitas GmbH
 Usage:
   pgpm deploy <connection_string> [-m | --mode <mode>]
                 [-o | --owner <owner_role>] [-u | --user <user_role>...]
-                [-f | --file <file_name>...]
+                [-f | --file <file_name>...] [--add-config <config_file_path>]
   pgpm install <connection_string>
   pgpm uninstall <connection_string>
   pgpm -h | --help
@@ -41,6 +41,8 @@ Options:
                             and deploy new schema with old name
                             * unsafe. allows cascade deleting of schema if it exists and adding new one
                             [default: safe]
+  --add-config <config_file_path>
+                            Provides path to additional config file. Attributes of this file overwrite config.json
 
 """
 
