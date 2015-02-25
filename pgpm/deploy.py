@@ -53,9 +53,7 @@ import sys
 import io
 import pkgutil
 
-if sys.version_info[0] == 2:
-    import codecs
-from pgpm import _version
+from pgpm import _version, _variables
 from pgpm.utils.term_out_ui import TermStyle
 from docopt import docopt
 
@@ -74,12 +72,12 @@ def create_db_schema(cur, schema_name, users, owner):
     """
     Create Postgres schema script and execute it on cursor
     """
-    _create_schema_script = "\nCREATE SCHEMA " + schema_name + ";\n"
+    _create_schema_script = "CREATE SCHEMA {0} ;\n".format(schema_name)
     if users:
-        _create_schema_script += "GRANT USAGE ON SCHEMA " + schema_name + " TO " + ", ".join(users) + ";\n"
+        _create_schema_script += "GRANT USAGE ON SCHEMA {0} TO {1};\n".format(schema_name, ", ".join(users))
     if owner:
-        _create_schema_script += "ALTER SCHEMA " + schema_name + " OWNER TO " + owner + ";\n"
-    _create_schema_script += "SET search_path TO " + schema_name + ", public;"
+        _create_schema_script += "ALTER SCHEMA {0} OWNER TO {1};\n".format(schema_name, owner)
+    _create_schema_script += "SET search_path TO {0}, public;".format(schema_name)
     cur.execute(_create_schema_script)
     print(TermStyle.PREFIX_INFO +
           'Schema {0} was created and search_path was changed.'
@@ -197,10 +195,12 @@ def install_manager(connection_string):
     print(TermStyle.PREFIX_INFO + 'Connected to {0}'.format(connection_string))
 
     # Create schema if it doesn't exist
-    cur.execute("SELECT EXISTS (SELECT schema_name FROM information_schema.schemata WHERE schema_name = '_pgpm');")
+    cur.execute("SELECT EXISTS (SELECT schema_name FROM information_schema.schemata WHERE schema_name = '{0}');"
+                .format(_variables.PGPM_SCHEMA_NAME))
     schema_exists = cur.fetchone()[0]
     if schema_exists:
-        print(TermStyle.PREFIX_ERROR + 'Can\'t install pgpm as schema _pgpm already exists')
+        print(TermStyle.PREFIX_ERROR +
+              'Can\'t install pgpm as schema {0} already exists'.format(_variables.PGPM_SCHEMA_NAME))
         close_db_conn(cur, conn, connection_string)
         exit()
     else:
@@ -284,8 +284,8 @@ def main():
                 print(TermStyle.PREFIX_INFO + 'Schema {0} will be updated'.format(schema_name))
 
         # Create schema or update it if exists (if not in production mode) and set search path
-        cur.execute("SELECT EXISTS (SELECT schema_name FROM information_schema.schemata WHERE schema_name = %s);",
-                    (schema_name,))
+        cur.execute("SELECT EXISTS (SELECT schema_name FROM information_schema.schemata WHERE schema_name = '{0}');"
+                    .format(schema_name))
         schema_exists = cur.fetchone()[0]
         if arguments['--file']:  # if specific scripts to be deployed
             if not schema_exists:
@@ -294,11 +294,11 @@ def main():
                 close_db_conn(cur, conn, arguments.get('<connection_string>'))
                 exit()
             else:
-                _set_search_path_schema_script = "SET search_path TO " + schema_name + ", public;"
+                _set_search_path_schema_script = "SET search_path TO {0}, public;".format(schema_name)
                 cur.execute(_set_search_path_schema_script)
                 print(TermStyle.PREFIX_INFO +
-                      'Search_path was changed to schema {0}. The following script was executed: {1}'
-                      .format(schema_name, _set_search_path_schema_script))
+                      'Search_path was changed to schema {0}'
+                      .format(schema_name))
         else:
             if not schema_exists:
                 create_db_schema(cur, schema_name, ", ".join(user_roles), owner_role)
@@ -313,7 +313,7 @@ def main():
                 _old_schema_rev = 0
                 while _old_schema_exists:
                     cur.execute("SELECT EXISTS (SELECT schema_name FROM information_schema.schemata "
-                                "WHERE schema_name = %s);", (schema_name + '_' + str(_old_schema_rev),))
+                                "WHERE schema_name = '{0}');".format(schema_name + '_' + str(_old_schema_rev)))
                     _old_schema_exists = cur.fetchone()[0]
                     if _old_schema_exists:
                         _old_schema_rev += 1
@@ -321,12 +321,12 @@ def main():
                 print(TermStyle.PREFIX_INFO +
                       'Schema already exists. It will be renamed to {0} in moderate mode. Renaming...'
                       .format(_old_schema_name))
-                _rename_schema_script = "\nALTER SCHEMA " + schema_name + " RENAME TO " + _old_schema_name + ";\n"
+                _rename_schema_script = "ALTER SCHEMA {0} RENAME TO {1};\n".format(schema_name, _old_schema_name)
                 cur.execute(_rename_schema_script)
                 print(TermStyle.PREFIX_INFO + 'Schema {0} was renamed to {1}.'.format(schema_name, _old_schema_name))
                 create_db_schema(cur, schema_name, user_roles, owner_role)
             else:
-                _drop_schema_script = "\nDROP SCHEMA " + schema_name + " CASCADE;\n"
+                _drop_schema_script = "DROP SCHEMA {0} CASCADE;\n".format(schema_name)
                 cur.execute(_drop_schema_script)
                 print(TermStyle.PREFIX_INFO + 'Dropping old schema {0}'.format(schema_name))
                 create_db_schema(cur, schema_name, user_roles, owner_role)
