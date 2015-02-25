@@ -100,6 +100,8 @@ def collect_scripts_from_files(script_paths, files_deployment):
     script_files_count = 0
     script = ''
     if script_paths:
+        if not isinstance(script_paths, list):
+            script_paths = [script_paths]
         for script_path in script_paths:
             for subdir, dirs, files in os.walk(script_path):
                 # print(subdir, dirs)  # uncomment for debugging
@@ -233,9 +235,17 @@ def main():
         print('\n' + TermStyle.PREFIX_INFO + 'Loading project configuration...')
         config_json = open('config.json')
         config_data = json.load(config_json)
+        config_json.close()
+        if arguments['--add-config']:
+            print('\n' + TermStyle.PREFIX_INFO + 'Adding additional configuration file {0}'.
+                  format(arguments['--add-config']))
+            add_config_json = open(arguments['--add-config'])
+            config_data = dict(config_data.items() + json.load(add_config_json).items())
+            add_config_json.close()
+        print(config_data)
+
         print(TermStyle.PREFIX_INFO + 'Configuration of project {0} of version {1} loaded successfully.'
               .format(config_data['name'], config_data['version']))
-        config_json.close()
 
         # Get types files and calculate order of execution
         if 'types_path' in config_data:
