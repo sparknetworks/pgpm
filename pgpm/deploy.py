@@ -60,6 +60,22 @@ from pgpm.utils.term_out_ui import TermStyle
 from docopt import docopt
 
 
+def connect_db(connection_string):
+    """
+    Connect to DB or exit on exception
+    """
+    print(TermStyle.PREFIX_INFO + 'Connecting to databases for deployment...')
+    try:
+        conn = psycopg2.connect(connection_string)
+        cur = conn.cursor()
+    except psycopg2.Error as e:
+        print(TermStyle.PREFIX_ERROR + 'Connection to DB failed. Traceback: \n{0}'.format(e))
+        exit(1)
+    print(TermStyle.PREFIX_INFO + 'Connected to {0}'.format(connection_string))
+
+    return conn, cur
+
+
 def close_db_conn(cur, conn, conn_string):
     """
     Close DB connection and cursor
@@ -68,6 +84,15 @@ def close_db_conn(cur, conn, conn_string):
     cur.close()
     conn.close()
     print(TermStyle.PREFIX_INFO + 'Connection to {0} closed.'.format(conn_string))
+
+
+def schema_exists(cur, schema_name):
+    """
+    Check if schema exists
+    """
+    cur.execute("SELECT EXISTS (SELECT schema_name FROM information_schema.schemata WHERE schema_name = '{0}');"
+                .format(schema_name))
+    return cur.fetchone()[0]
 
 
 def create_db_schema(cur, schema_name, users, owner):
@@ -210,25 +235,14 @@ def install_manager(connection_string):
     """
     Installs package manager
     """
-    # Connect to DB
-    print(TermStyle.PREFIX_INFO + 'Connecting to databases for deployment...')
-    try:
-        conn = psycopg2.connect(connection_string)
-        cur = conn.cursor()
-    except psycopg2.Error as e:
-        print(TermStyle.PREFIX_ERROR + 'Connection to DB failed. Traceback: \n{0}'.format(e))
-        exit(1)
-    print(TermStyle.PREFIX_INFO + 'Connected to {0}'.format(connection_string))
+    conn, cur = connect_db(connection_string)
 
     # Create schema if it doesn't exist
-    cur.execute("SELECT EXISTS (SELECT schema_name FROM information_schema.schemata WHERE schema_name = '{0}');"
-                .format(_variables.PGPM_SCHEMA_NAME))
-    schema_exists = cur.fetchone()[0]
-    if schema_exists:
+    if schema_exists(cur,_variables.PGPM_SCHEMA_NAME):
         print(TermStyle.PREFIX_ERROR +
               'Can\'t install pgpm as schema {0} already exists'.format(_variables.PGPM_SCHEMA_NAME))
         close_db_conn(cur, conn, connection_string)
-        exit()
+        exit(1)
     else:
         _install_script = pkgutil.get_data('pgpm', 'scripts/install.sql')
         print(TermStyle.PREFIX_INFO + 'Installing package manager')
@@ -281,14 +295,13 @@ def main():
         triggers_script, triggers_files_count = get_scripts("triggers_path", config_data, files_deployment, "triggers")
 
         # Connect to DB
-        print(TermStyle.PREFIX_INFO + 'Connecting to databases for deployment...')
-        try:
-            conn = psycopg2.connect(arguments['<connection_string>'])
-            cur = conn.cursor()
-        except psycopg2.Error as e:
-            print(TermStyle.PREFIX_ERROR + 'Connection to DB failed. Traceback: \n{0}'.format(e))
+        conn, cur = connect_db(arguments['<connection_string>'])
+        # Check if DB is pgpm enabled
+        if not schema_exists(cur, _variables.PGPM_SCHEMA_NAME):
+            print('\n' + TermStyle.PREFIX_ERROR + 'Can\'t deploy schemas to DB where pgpm was not installed. '
+                                                  'First install pgpm by running pgpm install')
+            close_db_conn(cur, conn, arguments['<connection_string>'])
             exit(1)
-        print(TermStyle.PREFIX_INFO + 'Connected to {0}'.format(arguments['<connection_string>']))
 
         # Prepare and execute preamble
         _deployment_script_preamble = pkgutil.get_data('pgpm', 'scripts/deploy_prepare_config.sql')
@@ -309,11 +322,8 @@ def main():
                 print(TermStyle.PREFIX_INFO + 'Schema {0} will be updated'.format(schema_name))
 
         # Create schema or update it if exists (if not in production mode) and set search path
-        cur.execute("SELECT EXISTS (SELECT schema_name FROM information_schema.schemata WHERE schema_name = '{0}');"
-                    .format(schema_name))
-        schema_exists = cur.fetchone()[0]
         if arguments['--file']:  # if specific scripts to be deployed
-            if not schema_exists:
+            if not schema_exists(cur, schema_name):
                 print(TermStyle.PREFIX_ERROR + 'Can\'t deploy scripts to schema {0}. Schema doesn\'t exist in database'
                       .format(schema_name))
                 close_db_conn(cur, conn, arguments.get('<connection_string>'))
@@ -325,7 +335,7 @@ def main():
                       'Search_path was changed to schema {0}'
                       .format(schema_name))
         else:
-            if not schema_exists:
+            if not schema_exists(cur, schema_name):
                 create_db_schema(cur, schema_name, ", ".join(user_roles), owner_role)
             elif arguments['--mode'][0] == 'safe':
                 print(TermStyle.PREFIX_ERROR +
