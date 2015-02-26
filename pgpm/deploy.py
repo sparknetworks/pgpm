@@ -125,6 +125,26 @@ def collect_scripts_from_files(script_paths, files_deployment):
     return script, script_files_count
 
 
+def get_scripts(path_parameter, config_data, files_deployment, script_type):
+    """
+    Gets scripts from specified folders
+    """
+    if path_parameter in config_data:
+        path_value = config_data[path_parameter]
+    else:
+        path_value = None
+
+    print(TermStyle.PREFIX_INFO + 'Getting scripts with {0} definitions'.format(script_type))
+    script, files_count = collect_scripts_from_files(path_value, files_deployment)
+    if path_value:
+        if files_count == 0:
+            print(TermStyle.PREFIX_WARNING + 'No {0} definitions were found in {1} folder'.format(script_type, path_value))
+    else:
+        print(TermStyle.PREFIX_INFO + 'No {0} folder was specified'.format(script_type))
+
+    return script, files_count
+
+
 def reorder_types(types_script):
     """
     Takes type scripts and reorders them to avoid Type doesn't exist exception
@@ -247,47 +267,13 @@ def main():
         print(TermStyle.PREFIX_INFO + 'Configuration of project {0} of version {1} loaded successfully.'
               .format(config_data['name'], config_data['version']))
 
-        # Get types files and calculate order of execution
-        if 'types_path' in config_data:
-            types_path = config_data['types_path']
-        else:
-            types_path = None
-
-        print(TermStyle.PREFIX_INFO + 'Getting scripts with types definitions')
-        types_script, types_files_count = collect_scripts_from_files(types_path, files_deployment)
-        if types_path:
-            if types_files_count == 0:
-                print(TermStyle.PREFIX_WARNING + 'No types definitions were found in {0} folder'.format(types_path))
-        else:
-            print(TermStyle.PREFIX_INFO + 'No types folder was specified')
-
-        # Get functions scripts
-        if 'functions_path' in config_data:
-            functions_path = config_data['functions_path']
-        else:
-            functions_path = None
-
-        print(TermStyle.PREFIX_INFO + 'Getting scripts with functions definitions')
-        functions_script, functions_files_count = collect_scripts_from_files(functions_path, files_deployment)
-        if functions_path:
-            if functions_files_count == 0:
-                print(TermStyle.PREFIX_WARNING + 'No functions definitions were found in {0} folder'.format(functions_path))
-        else:
-            print(TermStyle.PREFIX_INFO + 'No functions folder was specified')
-
-        # Get views scripts
-        if 'views_path' in config_data:
-            views_path = config_data['views_path']
-        else:
-            views_path = None
-
-        print(TermStyle.PREFIX_INFO + 'Getting scripts with views definitions')
-        views_script, views_files_count = collect_scripts_from_files(views_path, files_deployment)
-        if views_path:
-            if views_files_count == 0:
-                print(TermStyle.PREFIX_WARNING + 'No views definitions were found in {0} folder'.format(views_path))
-        else:
-            print(TermStyle.PREFIX_INFO + 'No views folder was specified')
+        # Get scripts
+        types_script, types_files_count = get_scripts("types_path", config_data, files_deployment, "types")
+        functions_script, functions_files_count = get_scripts("functions_path", config_data, files_deployment,
+                                                              "functions")
+        views_script, views_files_count = get_scripts("views_path", config_data, files_deployment, "views")
+        tables_script, tables_files_count = get_scripts("tables_path", config_data, files_deployment, "tables")
+        triggers_script, triggers_files_count = get_scripts("triggers_path", config_data, files_deployment, "triggers")
 
         # Connect to DB
         print(TermStyle.PREFIX_INFO + 'Connecting to databases for deployment...')
@@ -373,8 +359,8 @@ def main():
                       'is not support yet. Skipping')
             else:
                 type_ordered_scripts, type_unordered_scripts = reorder_types(types_script)
-                # print(TermStyle.BOLD_ON + TermStyle.FONT_WHITE + '\n'.join(type_ordered_scripts))  # uncomment for debug
-                # print('\n'.join(type_unordered_scripts) + TermStyle.RESET)  # uncomment for debug
+                # uncomment for debug
+                # print(TermStyle.BOLD_ON + TermStyle.FONT_WHITE + '\n'.join(type_ordered_scripts))
                 if type_ordered_scripts:
                     cur.execute('\n'.join(type_ordered_scripts))
                 if type_unordered_scripts:
@@ -395,8 +381,23 @@ def main():
         # Executing views
         if views_files_count > 0:
             print(TermStyle.PREFIX_INFO + 'Running views definitions scripts')
-            # print(TermStyle.HEADER + functions_script)
+            # print(TermStyle.HEADER + views_script)
             cur.execute(views_script)
+            print(TermStyle.PREFIX_INFO + 'Views loaded to schema {0}'.format(schema_name))
+        else:
+            print(TermStyle.PREFIX_INFO + 'No view scripts to deploy')
+
+        # Executing tables
+        if tables_files_count > 0:
+            print(TermStyle.PREFIX_WARNING + 'Support for DDL or data updates is not implemented yet')
+        else:
+            print(TermStyle.PREFIX_INFO + 'No DDL or data update scripts to deploy')
+
+        # Executing triggers
+        if triggers_files_count > 0:
+            print(TermStyle.PREFIX_INFO + 'Running views definitions scripts')
+            # print(TermStyle.HEADER + triggers_script)
+            cur.execute(triggers_script)
             print(TermStyle.PREFIX_INFO + 'Views loaded to schema {0}'.format(schema_name))
         else:
             print(TermStyle.PREFIX_INFO + 'No view scripts to deploy')
