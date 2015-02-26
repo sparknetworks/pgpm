@@ -262,7 +262,12 @@ def main():
             add_config_json = open(arguments['--add-config'])
             config_data = dict(config_data.items() + json.load(add_config_json).items())
             add_config_json.close()
-        print(config_data)
+
+        # Check if owner role and user roles are to be defined with config files
+        if not owner_role and config_data['owner_role']:
+            owner_role = config_data['owner_role']
+        if not user_roles and config_data['user_roles']:
+            user_roles = config_data['user_roles']
 
         print(TermStyle.PREFIX_INFO + 'Configuration of project {0} of version {1} loaded successfully.'
               .format(config_data['name'], config_data['version']))
