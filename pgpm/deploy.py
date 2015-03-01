@@ -21,8 +21,6 @@ Arguments:
 Options:
   -h --help                 Show this screen.
   -v --version              Show version.
-  -p --production           Add constraints to deployment. Will not deploy versioned schema
-                            if it already exists in the DB
   -f <file_name>..., --file <file_name>...
                             Use it if you want to deploy only specific files (functions, types, etc).
                             In that case these files if exist will be overridden.
@@ -54,10 +52,13 @@ import re
 import sys
 import io
 import pkgutil
+import utils.config
 
 from pgpm import _version, _variables
 from pgpm.utils.term_out_ui import TermStyle
 from docopt import docopt
+
+SET_SEARCH_PATH = "SET search_path TO {0}, public;"
 
 
 def connect_db(connection_string):
@@ -65,12 +66,8 @@ def connect_db(connection_string):
     Connect to DB or exit on exception
     """
     print(TermStyle.PREFIX_INFO + 'Connecting to databases for deployment...')
-    try:
-        conn = psycopg2.connect(connection_string)
-        cur = conn.cursor()
-    except psycopg2.Error as e:
-        print(TermStyle.PREFIX_ERROR + 'Connection to DB failed. Traceback: \n{0}'.format(e))
-        exit(1)
+    conn = psycopg2.connect(connection_string)
+    cur = conn.cursor()
     print(TermStyle.PREFIX_INFO + 'Connected to {0}'.format(connection_string))
 
     return conn, cur
@@ -104,7 +101,7 @@ def create_db_schema(cur, schema_name, users, owner):
         _create_schema_script += "GRANT USAGE ON SCHEMA {0} TO {1};\n".format(schema_name, ", ".join(users))
     if owner:
         _create_schema_script += "ALTER SCHEMA {0} OWNER TO {1};\n".format(schema_name, owner)
-    _create_schema_script += "SET search_path TO {0}, public;".format(schema_name)
+    _create_schema_script += SET_SEARCH_PATH.format(schema_name)
     cur.execute(_create_schema_script)
     print(TermStyle.PREFIX_INFO +
           'Schema {0} was created and search_path was changed.'
@@ -242,11 +239,22 @@ def install_manager(connection_string):
         print(TermStyle.PREFIX_ERROR +
               'Can\'t install pgpm as schema {0} already exists'.format(_variables.PGPM_SCHEMA_NAME))
         close_db_conn(cur, conn, connection_string)
-        exit(1)
+        sys.exit(1)
     else:
-        _install_script = pkgutil.get_data('pgpm', 'scripts/install.sql')
+        # Prepare and execute preamble
+        _deployment_script_preamble = pkgutil.get_data('pgpm', 'scripts/deploy_prepare_config.sql')
+        print(TermStyle.PREFIX_INFO + 'Executing a preamble to install statement')
+        cur.execute(_deployment_script_preamble)
+
+        _install_script = pkgutil.get_data('pgpm', 'scripts/install.tmpl.sql')
         print(TermStyle.PREFIX_INFO + 'Installing package manager')
-        cur.execute(_install_script)
+        cur.execute(_install_script.format(schema_name=_variables.PGPM_SCHEMA_NAME))
+
+        _add_package_info = pkgutil.get_data('pgpm', 'scripts/functions/_add_package_info.sql')
+        cur.execute(_add_package_info)
+        cur.callproc('{0}._add_package_info'.format(_variables.PGPM_SCHEMA_NAME),
+                     [_variables.PGPM_SCHEMA_NAME, _variables.PGPM_SCHEMA_SUBCLASS, 'Package manager for Postgres',
+                      0, 0, 1, '', '', 'MIT'])
 
     # Commit transaction
     conn.commit()
@@ -267,7 +275,7 @@ def main():
     elif arguments['deploy']:
         # Load project configuration file
         print('\n' + TermStyle.PREFIX_INFO + 'Loading project configuration...')
-        config_json = open('config.json')
+        config_json = open(_variables.CONFIG_FILE_NAME)
         config_data = json.load(config_json)
         config_json.close()
         if arguments['--add-config']:
@@ -276,15 +284,16 @@ def main():
             add_config_json = open(arguments['--add-config'])
             config_data = dict(config_data.items() + json.load(add_config_json).items())
             add_config_json.close()
+        config_obj = utils.config.SchemaConfiguration(config_data)
 
         # Check if owner role and user roles are to be defined with config files
-        if not owner_role and config_data['owner_role']:
-            owner_role = config_data['owner_role']
-        if not user_roles and config_data['user_roles']:
-            user_roles = config_data['user_roles']
+        if not owner_role and config_obj.owner_role:
+            owner_role = config_obj.owner_role
+        if not user_roles and config_obj.user_roles:
+            user_roles = config_obj.user_roles
 
         print(TermStyle.PREFIX_INFO + 'Configuration of project {0} of version {1} loaded successfully.'
-              .format(config_data['name'], config_data['version']))
+              .format(config_obj.name, config_obj.version.to_string()))
 
         # Get scripts
         types_script, types_files_count = get_scripts("types_path", config_data, files_deployment, "types")
@@ -301,7 +310,7 @@ def main():
             print('\n' + TermStyle.PREFIX_ERROR + 'Can\'t deploy schemas to DB where pgpm was not installed. '
                                                   'First install pgpm by running pgpm install')
             close_db_conn(cur, conn, arguments['<connection_string>'])
-            exit(1)
+            sys.exit(1)
 
         # Prepare and execute preamble
         _deployment_script_preamble = pkgutil.get_data('pgpm', 'scripts/deploy_prepare_config.sql')
@@ -311,11 +320,11 @@ def main():
 
         # Get schema name from project configuration
         schema_name = ''
-        if config_data['subclass'] == 'versioned':
-            schema_name = '{0}_{1}'.format(config_data['name'], config_data['version'])
+        if config_obj.subclass == 'versioned':
+            schema_name = '{0}_{1}'.format(config_obj.name, config_obj.version.to_string())
             print(TermStyle.PREFIX_INFO + 'Schema {0} will be updated'.format(schema_name))
-        elif config_data['subclass'] == 'basic':
-            schema_name = '{0}'.format(config_data['name'])
+        elif config_obj.subclass == 'basic':
+            schema_name = '{0}'.format(config_obj.name)
             if not arguments['--file']:
                 print(TermStyle.PREFIX_INFO + 'Schema {0} will be created/replaced'.format(schema_name))
             else:
@@ -327,13 +336,12 @@ def main():
                 print(TermStyle.PREFIX_ERROR + 'Can\'t deploy scripts to schema {0}. Schema doesn\'t exist in database'
                       .format(schema_name))
                 close_db_conn(cur, conn, arguments.get('<connection_string>'))
-                exit()
+                sys.exit(1)
             else:
-                _set_search_path_schema_script = "SET search_path TO {0}, public;".format(schema_name)
+                _set_search_path_schema_script = SET_SEARCH_PATH.format(schema_name)
                 cur.execute(_set_search_path_schema_script)
                 print(TermStyle.PREFIX_INFO +
-                      'Search_path was changed to schema {0}'
-                      .format(schema_name))
+                      'Search_path was changed to schema {0}'.format(schema_name))
         else:
             if not schema_exists(cur, schema_name):
                 create_db_schema(cur, schema_name, ", ".join(user_roles), owner_role)
@@ -342,7 +350,7 @@ def main():
                       'Schema already exists. It won\'t be overriden in safe mode. Rerun your script without '
                       '"-m moderate" or "-m unsafe" flags')
                 close_db_conn(cur, conn, arguments.get('<connection_string>'))
-                exit()
+                sys.exit(1)
             elif arguments['--mode'][0] == 'moderate':
                 _old_schema_exists = True
                 _old_schema_rev = 0
@@ -416,6 +424,19 @@ def main():
             print(TermStyle.PREFIX_INFO + 'Views loaded to schema {0}'.format(schema_name))
         else:
             print(TermStyle.PREFIX_INFO + 'No view scripts to deploy')
+
+        # Add metadata to pgpm schema
+        cur.execute(SET_SEARCH_PATH.format(_variables.PGPM_SCHEMA_NAME))
+        cur.callproc('{0}._add_package_info'.format(_variables.PGPM_SCHEMA_NAME),
+                     [config_obj.name, config_obj.subclass, config_obj.description,
+                      config_obj.version.major,
+                      config_obj.version.minor,
+                      config_obj.version.patch,
+                      config_obj.version.pre,
+                      config_obj.version.metadata,
+                      config_obj.license])
+        _after_deploy_script = pkgutil.get_data('pgpm', 'scripts/after_deploy.sql')
+        cur.execute(_after_deploy_script)
 
         # Commit transaction
         conn.commit()

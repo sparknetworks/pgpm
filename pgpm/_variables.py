@@ -1,1 +1,3 @@
 PGPM_SCHEMA_NAME = "_pgpm"
+PGPM_SCHEMA_SUBCLASS = "basic"
+CONFIG_FILE_NAME = "config.json"
