@@ -52,7 +52,8 @@ import re
 import sys
 import io
 import pkgutil
-import utils.config
+
+from pgpm.utils import config
 
 from pgpm import _version, _variables
 from pgpm.utils.term_out_ui import TermStyle
@@ -253,8 +254,8 @@ def install_manager(connection_string):
         _add_package_info = pkgutil.get_data('pgpm', 'scripts/functions/_add_package_info.sql')
         cur.execute(_add_package_info)
         cur.callproc('{0}._add_package_info'.format(_variables.PGPM_SCHEMA_NAME),
-                     [_variables.PGPM_SCHEMA_NAME, _variables.PGPM_SCHEMA_SUBCLASS, 'Package manager for Postgres',
-                      0, 0, 1, '', '', 'MIT'])
+                     [_variables.PGPM_SCHEMA_NAME, _variables.PGPM_SCHEMA_SUBCLASS,
+                      0, 0, 1, None, None, None, 'Package manager for Postgres', 'MIT'])
 
     # Commit transaction
     conn.commit()
@@ -284,7 +285,7 @@ def main():
             add_config_json = open(arguments['--add-config'])
             config_data = dict(config_data.items() + json.load(add_config_json).items())
             add_config_json.close()
-        config_obj = utils.config.SchemaConfiguration(config_data)
+        config_obj = config.SchemaConfiguration(config_data)
 
         # Check if owner role and user roles are to be defined with config files
         if not owner_role and config_obj.owner_role:
@@ -366,7 +367,21 @@ def main():
                       .format(_old_schema_name))
                 _rename_schema_script = "ALTER SCHEMA {0} RENAME TO {1};\n".format(schema_name, _old_schema_name)
                 cur.execute(_rename_schema_script)
-                print(TermStyle.PREFIX_INFO + 'Schema {0} was renamed to {1}.'.format(schema_name, _old_schema_name))
+                # Add metadata to pgpm schema
+                cur.execute(SET_SEARCH_PATH.format(_variables.PGPM_SCHEMA_NAME))
+                cur.callproc('{0}._add_package_info'.format(_variables.PGPM_SCHEMA_NAME),
+                             [config_obj.name,
+                              config_obj.subclass,
+                              config_obj.version.major,
+                              config_obj.version.minor,
+                              config_obj.version.patch,
+                              config_obj.version.pre,
+                              config_obj.version.metadata,
+                              _old_schema_rev,
+                              config_obj.description,
+                              config_obj.license])
+                print(TermStyle.PREFIX_INFO + 'Schema {0} was renamed to {1}. Meta info was added to {2} schema'
+                      .format(schema_name, _old_schema_name, _variables.PGPM_SCHEMA_NAME))
                 create_db_schema(cur, schema_name, user_roles, owner_role)
             else:
                 _drop_schema_script = "DROP SCHEMA {0} CASCADE;\n".format(schema_name)
@@ -428,15 +443,19 @@ def main():
         # Add metadata to pgpm schema
         cur.execute(SET_SEARCH_PATH.format(_variables.PGPM_SCHEMA_NAME))
         cur.callproc('{0}._add_package_info'.format(_variables.PGPM_SCHEMA_NAME),
-                     [config_obj.name, config_obj.subclass, config_obj.description,
+                     [config_obj.name,
+                      config_obj.subclass,
                       config_obj.version.major,
                       config_obj.version.minor,
                       config_obj.version.patch,
                       config_obj.version.pre,
                       config_obj.version.metadata,
+                      None,
+                      config_obj.description,
                       config_obj.license])
         _after_deploy_script = pkgutil.get_data('pgpm', 'scripts/after_deploy.sql')
         cur.execute(_after_deploy_script)
+        print(TermStyle.PREFIX_INFO + 'Meta info about deployment was added to schema {0}'.format(_variables.PGPM_SCHEMA_NAME))
 
         # Commit transaction
         conn.commit()

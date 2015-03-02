@@ -33,8 +33,8 @@ class Version:
     major = 0
     minor = 0
     patch = 1
-    pre = ''
-    metadata = ''
+    pre = None
+    metadata = None
 
     def __init__(self, version_string):
         """
