@@ -85,6 +85,9 @@ setup(
         ],
     },
     package_data={
-        'pgpm': ['scripts/*']
+        'pgpm': [
+            'scripts/*.sql',
+            'scripts/functions/*'
+        ]
     }
 )

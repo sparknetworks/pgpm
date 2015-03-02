@@ -30,6 +30,7 @@ $$BEGIN
         pkg_v_pre character varying(255),
         pkg_v_metadata character varying(255),
         pkg_old_rev integer,
+        pkg_vcs_ref varchar(255),
         pkg_subclass integer,
         pkg_license text,
         pkg_created timestamp without time zone DEFAULT now(),
