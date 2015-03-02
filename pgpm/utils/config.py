@@ -32,7 +32,7 @@ class Version:
     """
     major = 0
     minor = 0
-    patch = 1
+    patch = 0
     pre = None
     metadata = None
 
