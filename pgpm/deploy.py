@@ -247,15 +247,16 @@ def install_manager(connection_string):
         print(TermStyle.PREFIX_INFO + 'Executing a preamble to install statement')
         cur.execute(_deployment_script_preamble)
 
-        _install_script = pkgutil.get_data('pgpm', 'scripts/install.tmpl.sql')
+        # Python 3.x doesn't have format for byte strings so we have to convert
+        _install_script = pkgutil.get_data('pgpm', 'scripts/install.tmpl.sql').decode('utf-8')
         print(TermStyle.PREFIX_INFO + 'Installing package manager')
         cur.execute(_install_script.format(schema_name=_variables.PGPM_SCHEMA_NAME))
 
         _add_package_info = pkgutil.get_data('pgpm', 'scripts/functions/_add_package_info.sql')
         cur.execute(_add_package_info)
         cur.callproc('{0}._add_package_info'.format(_variables.PGPM_SCHEMA_NAME),
-                     [_variables.PGPM_SCHEMA_NAME, _variables.PGPM_SCHEMA_SUBCLASS,
-                      0, 0, 1, None, None, None, 'Package manager for Postgres', 'MIT'])
+                     [_variables.PGPM_SCHEMA_NAME, _variables.PGPM_SCHEMA_SUBCLASS, None,
+                      0, 0, 1, None, None, 'Package manager for Postgres', 'MIT'])
 
     # Commit transaction
     conn.commit()
@@ -283,7 +284,7 @@ def main():
             print('\n' + TermStyle.PREFIX_INFO + 'Adding additional configuration file {0}'.
                   format(arguments['--add-config']))
             add_config_json = open(arguments['--add-config'])
-            config_data = dict(config_data.items() + json.load(add_config_json).items())
+            config_data = dict(list(config_data.items()) + list(json.load(add_config_json).items()))
             add_config_json.close()
         config_obj = config.SchemaConfiguration(config_data)
 
@@ -345,7 +346,7 @@ def main():
                       'Search_path was changed to schema {0}'.format(schema_name))
         else:
             if not schema_exists(cur, schema_name):
-                create_db_schema(cur, schema_name, ", ".join(user_roles), owner_role)
+                create_db_schema(cur, schema_name, user_roles, owner_role)
             elif arguments['--mode'][0] == 'safe':
                 print(TermStyle.PREFIX_ERROR +
                       'Schema already exists. It won\'t be overriden in safe mode. Rerun your script without '
@@ -372,12 +373,12 @@ def main():
                 cur.callproc('{0}._add_package_info'.format(_variables.PGPM_SCHEMA_NAME),
                              [config_obj.name,
                               config_obj.subclass,
+                              _old_schema_rev,
                               config_obj.version.major,
                               config_obj.version.minor,
                               config_obj.version.patch,
                               config_obj.version.pre,
                               config_obj.version.metadata,
-                              _old_schema_rev,
                               config_obj.description,
                               config_obj.license])
                 print(TermStyle.PREFIX_INFO + 'Schema {0} was renamed to {1}. Meta info was added to {2} schema'
@@ -445,12 +446,12 @@ def main():
         cur.callproc('{0}._add_package_info'.format(_variables.PGPM_SCHEMA_NAME),
                      [config_obj.name,
                       config_obj.subclass,
+                      None,
                       config_obj.version.major,
                       config_obj.version.minor,
                       config_obj.version.patch,
                       config_obj.version.pre,
                       config_obj.version.metadata,
-                      None,
                       config_obj.description,
                       config_obj.license])
         _after_deploy_script = pkgutil.get_data('pgpm', 'scripts/after_deploy.sql')
