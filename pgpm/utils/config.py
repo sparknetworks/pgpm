@@ -19,7 +19,8 @@ class SchemaConfiguration:
             self.description = config_dict["description"]
         self.subclass = config_dict["subclass"]
         self.version = Version(config_dict["version"])
-        self.license = config_dict["license"]
+        if config_dict["license"]:
+            self.license = config_dict["license"]
         if config_dict["owner_role"]:
             self.owner_role = config_dict["owner_role"]
         if config_dict["user_roles"]:
