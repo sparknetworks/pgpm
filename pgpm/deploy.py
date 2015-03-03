@@ -132,7 +132,7 @@ def collect_scripts_from_files(script_paths, files_deployment):
                     if files_deployment:  # if specific script to be deployed, only find them
                         for list_file_name in files_deployment:
                             # if subdir in files_deployment:
-                            #     if file_info == list_file_name
+                            #     if file_info == list_file_name	
                             if file_info == list_file_name:
                                 script_files_count += 1
                                 script += io.open(os.path.join(subdir, file_info), 'r', -1, 'utf-8-sig').read()

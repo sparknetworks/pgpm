@@ -15,15 +15,15 @@ class SchemaConfiguration:
         populates properties with cofig data
         """
         self.name = config_dict["name"]
-        if config_dict["description"]:
+        if "description" in config_dict:
             self.description = config_dict["description"]
         self.subclass = config_dict["subclass"]
         self.version = Version(config_dict["version"])
-        if config_dict["license"]:
+        if "license" in config_dict:
             self.license = config_dict["license"]
-        if config_dict["owner_role"]:
+        if "owner_role" in config_dict:
             self.owner_role = config_dict["owner_role"]
-        if config_dict["user_roles"]:
+        if "user_roles" in config_dict:
             self.user_roles = config_dict["user_roles"]
 
 
