@@ -125,21 +125,25 @@ def collect_scripts_from_files(script_paths, files_deployment):
     if script_paths:
         if not isinstance(script_paths, list):
             script_paths = [script_paths]
-        for script_path in script_paths:
-            for subdir, dirs, files in os.walk(script_path):
-                # print(subdir, dirs)  # uncomment for debugging
-                for file_info in files:
-                    if files_deployment:  # if specific script to be deployed, only find them
-                        for list_file_name in files_deployment:
-                            # if subdir in files_deployment:
-                            #     if file_info == list_file_name	
-                            if file_info == list_file_name:
+        if files_deployment:  # if specific script to be deployed, only find them
+           for list_file_name in files_deployment:
+               if os.path.isfile(list_file_name):
+                    if script_paths is not None:
+                        for i in range(len(script_paths)):
+                            if script_paths[i] in list_file_name:
                                 script_files_count += 1
-                                script += io.open(os.path.join(subdir, file_info), 'r', -1, 'utf-8-sig').read()
+                                script += io.open(list_file_name, 'r', -1, 'utf-8-sig').read()
                                 script += '\n'
                                 print(TermStyle.PREFIX_INFO_IMPORTANT + TermStyle.BOLD_ON +
-                                      '{0}'.format(os.path.join(subdir, file_info)) + TermStyle.RESET)
-                    else:  # if the whole schema to be deployed
+                                      '{0}'.format(list_file_name) + TermStyle.RESET)
+               else:
+                  print(TermStyle.PREFIX_WARNING + 'File {0} does not exist, please specify a correct path'.format(list_file_name))
+
+        else:
+            for script_path in script_paths:
+                for subdir, dirs, files in os.walk(script_path):
+                    # print(subdir, dirs)  # uncomment for debugging
+                    for file_info in files:
                         script_files_count += 1
                         script += io.open(os.path.join(subdir, file_info), 'r', -1, 'utf-8-sig').read()
                         script += '\n'
@@ -152,6 +156,7 @@ def get_scripts(path_parameter, config_data, files_deployment, script_type):
     """
     Gets scripts from specified folders
     """
+
     if path_parameter in config_data:
         path_value = config_data[path_parameter]
     else:
@@ -393,9 +398,10 @@ def main():
         # Reordering and executing types
         if types_files_count > 0:
             if arguments['--file']:
-                print(TermStyle.PREFIX_WARNING +
+                print(TermStyle.PREFIX_ERROR +
                       'Deploying types definition scripts in existing schema without dropping it first '
                       'is not support yet. Skipping')
+                sys.exit(1)
             else:
                 type_ordered_scripts, type_unordered_scripts = reorder_types(types_script)
                 # uncomment for debug
