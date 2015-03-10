@@ -128,14 +128,13 @@ def collect_scripts_from_files(script_paths, files_deployment):
         if files_deployment:  # if specific script to be deployed, only find them
            for list_file_name in files_deployment:
                if os.path.isfile(list_file_name):
-                    if script_paths is not None:
-                        for i in range(len(script_paths)):
-                            if script_paths[i] in list_file_name:
-                                script_files_count += 1
-                                script += io.open(list_file_name, 'r', -1, 'utf-8-sig').read()
-                                script += '\n'
-                                print(TermStyle.PREFIX_INFO_IMPORTANT + TermStyle.BOLD_ON +
-                                      '{0}'.format(list_file_name) + TermStyle.RESET)
+                    for i in range(len(script_paths)):
+                        if script_paths[i] in list_file_name:
+                            script_files_count += 1
+                            script += io.open(list_file_name, 'r', -1, 'utf-8-sig').read()
+                            script += '\n'
+                            print(TermStyle.PREFIX_INFO_IMPORTANT + TermStyle.BOLD_ON +
+                                  '{0}'.format(list_file_name) + TermStyle.RESET)
                else:
                   print(TermStyle.PREFIX_WARNING + 'File {0} does not exist, please specify a correct path'.format(list_file_name))
 
