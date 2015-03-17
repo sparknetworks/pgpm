@@ -52,7 +52,6 @@ class Version:
     def to_string(self):
         """
         stringifies version
-        :param version: Version
         :return: string of version
         """
         return '{0}_{1}_{2}'.format(self.major, self.minor, self.patch)
