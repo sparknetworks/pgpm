@@ -1,4 +1,4 @@
-class TermStyle:
+class TermStyle(object):
     """
     Text styles for terminal
     """
