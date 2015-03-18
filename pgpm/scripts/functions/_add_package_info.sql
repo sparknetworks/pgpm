@@ -1,15 +1,15 @@
-CREATE OR REPLACE FUNCTION _add_package_info(p_pkg_name varchar(255),
-                                             p_pkg_subclass_name varchar(255),
-                                             p_pkg_old_rev integer,
-                                             p_pkg_v_major integer,
-                                             p_pkg_v_minor integer DEFAULT 0,
-                                             p_pkg_v_patch integer DEFAULT 0,
-                                             p_pkg_v_pre varchar(255) DEFAULT NULL,
-                                             p_pkg_v_metadata varchar(255) DEFAULT NULL,
-                                             p_pkg_description text DEFAULT '',
-                                             p_pkg_license text DEFAULT NULL,
-                                             p_pkg_vcs_ref varchar(255) DEFAULT NULL)
-    RETURNS integer AS
+CREATE OR REPLACE FUNCTION _add_package_info(p_pkg_name TEXT,
+                                             p_pkg_subclass_name TEXT,
+                                             p_pkg_old_rev INTEGER,
+                                             p_pkg_v_major INTEGER,
+                                             p_pkg_v_minor INTEGER DEFAULT 0,
+                                             p_pkg_v_patch INTEGER DEFAULT 0,
+                                             p_pkg_v_pre TEXT DEFAULT NULL,
+                                             p_pkg_v_metadata TEXT DEFAULT NULL,
+                                             p_pkg_description TEXT DEFAULT '',
+                                             p_pkg_license TEXT DEFAULT NULL,
+                                             p_pkg_vcs_ref TEXT DEFAULT NULL)
+    RETURNS INTEGER AS
 $BODY$
 ---
 -- @description
@@ -46,9 +46,9 @@ $BODY$
 -- vcs reference to track the code
 ---
 DECLARE
-    l_existing_pkg_id integer;
+    l_existing_pkg_id INTEGER;
 
-	return_value integer;
+	  return_value INTEGER;
 BEGIN
 
     -- Case 1: unsafe mode, rewrite of the whole schema with the same version or some of the files in it
@@ -119,4 +119,3 @@ BEGIN
 END;
 $BODY$
     LANGUAGE 'plpgsql' VOLATILE SECURITY DEFINER
-    COST 30;

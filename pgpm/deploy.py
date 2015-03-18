@@ -52,6 +52,7 @@ import re
 import sys
 import io
 import pkgutil
+import inspect
 
 from pgpm.utils import config
 
@@ -126,8 +127,8 @@ def collect_scripts_from_files(script_paths, files_deployment):
         if not isinstance(script_paths, list):
             script_paths = [script_paths]
         if files_deployment:  # if specific script to be deployed, only find them
-           for list_file_name in files_deployment:
-               if os.path.isfile(list_file_name):
+            for list_file_name in files_deployment:
+                if os.path.isfile(list_file_name):
                     for i in range(len(script_paths)):
                         if script_paths[i] in list_file_name:
                             script_files_count += 1
@@ -135,8 +136,9 @@ def collect_scripts_from_files(script_paths, files_deployment):
                             script += '\n'
                             print(TermStyle.PREFIX_INFO_IMPORTANT + TermStyle.BOLD_ON +
                                   '{0}'.format(list_file_name) + TermStyle.RESET)
-               else:
-                  print(TermStyle.PREFIX_WARNING + 'File {0} does not exist, please specify a correct path'.format(list_file_name))
+            else:
+                print(TermStyle.PREFIX_WARNING + 'File {0} does not exist, please specify a correct path'
+                      .format(list_file_name))
 
         else:
             for script_path in script_paths:
@@ -233,6 +235,14 @@ def reorder_types(types_script):
     return type_ordered_scripts, type_unordered_scripts
 
 
+def resolve_dependencies(cur, dependencies):
+    """
+    Function checks if dependant packages are installed in DB
+    """
+    # TODO: finish function
+    # for k, v in dependencies.items():
+
+
 def install_manager(connection_string):
     """
     Installs package manager
@@ -256,8 +266,19 @@ def install_manager(connection_string):
         print(TermStyle.PREFIX_INFO + 'Installing package manager')
         cur.execute(_install_script.format(schema_name=_variables.PGPM_SCHEMA_NAME))
 
-        _add_package_info = pkgutil.get_data('pgpm', 'scripts/functions/_add_package_info.sql')
-        cur.execute(_add_package_info)
+        # get pgpm functions
+        script, files_count = collect_scripts_from_files('{0}/scripts/functions'
+                                                         .format(os.path.dirname(inspect.getfile(inspect))), False)
+
+        # Executing pgpm functions
+        if files_count > 0:
+            print(TermStyle.PREFIX_INFO + 'Running functions definitions scripts')
+            # print(TermStyle.HEADER + functions_script)
+            cur.execute(script)
+            print(TermStyle.PREFIX_INFO + 'Functions loaded to schema {0}'.format(_variables.PGPM_SCHEMA_NAME))
+        else:
+            print(TermStyle.PREFIX_INFO + 'No function scripts to deploy')
+
         cur.callproc('{0}._add_package_info'.format(_variables.PGPM_SCHEMA_NAME),
                      [_variables.PGPM_SCHEMA_NAME, _variables.PGPM_SCHEMA_SUBCLASS, None,
                       0, 0, 1, None, None, 'Package manager for Postgres', 'MIT'])
@@ -300,6 +321,9 @@ def main():
 
         print(TermStyle.PREFIX_INFO + 'Configuration of project {0} of version {1} loaded successfully.'
               .format(config_obj.name, config_obj.version.to_string()))
+
+        # Resolve dependencies
+        resolve_dependencies
 
         # Get scripts
         types_script, types_files_count = get_scripts("types_path", config_data, files_deployment, "types")

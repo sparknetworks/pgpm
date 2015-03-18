@@ -74,4 +74,7 @@ $$BEGIN
     COMMENT ON COLUMN deployment_events.dpl_ev_issue_link IS
         'Link to an issue related to this deployment in issue tracker.';
 
+    -- Create or replace all functions now
+    {functions_list}
+
 END$$;
