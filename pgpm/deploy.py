@@ -9,7 +9,7 @@ Usage:
   pgpm deploy <connection_string> [-m | --mode <mode>]
                 [-o | --owner <owner_role>] [-u | --user <user_role>...]
                 [-f | --file <file_name>...] [--add-config <config_file_path>]
-  pgpm install <connection_string>
+  pgpm install <connection_string> [--update]
   pgpm uninstall <connection_string>
   pgpm -h | --help
   pgpm -v | --version
@@ -41,6 +41,7 @@ Options:
                             [default: safe]
   --add-config <config_file_path>
                             Provides path to additional config file. Attributes of this file overwrite config.json
+  --update                  Update pgpm to a newer version
 
 """
 
@@ -289,209 +290,217 @@ def install_manager(connection_string):
     close_db_conn(cur, conn, connection_string)
 
 
-def main():
-    arguments = docopt(__doc__, version=_version.__version__)
+def deployment_manager(arguments):
+    """
+    Deploys schema
+    :param arguments: params from cli
+    :return:
+    """
     user_roles = arguments['--user']
     if arguments['--owner']:
         owner_role = arguments['--owner'][0]
     else:
         owner_role = ''
     files_deployment = arguments['--file']  # if specific script to be deployed, only find them
+
+    # Load project configuration file
+    print('\n' + TermStyle.PREFIX_INFO + 'Loading project configuration...')
+    config_json = open(_variables.CONFIG_FILE_NAME)
+    config_data = json.load(config_json)
+    config_json.close()
+    if arguments['--add-config']:
+        print('\n' + TermStyle.PREFIX_INFO + 'Adding additional configuration file {0}'.
+              format(arguments['--add-config']))
+        add_config_json = open(arguments['--add-config'])
+        config_data = dict(list(config_data.items()) + list(json.load(add_config_json).items()))
+        add_config_json.close()
+    config_obj = config.SchemaConfiguration(config_data)
+
+    # Check if owner role and user roles are to be defined with config files
+    if not owner_role and config_obj.owner_role:
+        owner_role = config_obj.owner_role
+    if not user_roles and config_obj.user_roles:
+        user_roles = config_obj.user_roles
+
+    print(TermStyle.PREFIX_INFO + 'Configuration of project {0} of version {1} loaded successfully.'
+          .format(config_obj.name, config_obj.version.to_string()))
+
+    # Resolve dependencies
+    # TODO: Implement resolve_dependencies
+
+    # Get scripts
+    types_script, types_files_count = get_scripts("types_path", config_data, files_deployment, "types")
+    functions_script, functions_files_count = get_scripts("functions_path", config_data, files_deployment,
+                                                          "functions")
+    views_script, views_files_count = get_scripts("views_path", config_data, files_deployment, "views")
+    tables_script, tables_files_count = get_scripts("tables_path", config_data, files_deployment, "tables")
+    triggers_script, triggers_files_count = get_scripts("triggers_path", config_data, files_deployment, "triggers")
+
+    # Connect to DB
+    conn, cur = connect_db(arguments['<connection_string>'])
+    # Check if DB is pgpm enabled
+    if not schema_exists(cur, _variables.PGPM_SCHEMA_NAME):
+        print('\n' + TermStyle.PREFIX_ERROR + 'Can\'t deploy schemas to DB where pgpm was not installed. '
+                                              'First install pgpm by running pgpm install')
+        close_db_conn(cur, conn, arguments['<connection_string>'])
+        sys.exit(1)
+
+    # Prepare and execute preamble
+    _deployment_script_preamble = pkgutil.get_data('pgpm', 'scripts/deploy_prepare_config.sql')
+    print(TermStyle.PREFIX_INFO + 'Executing a preamble to deployment statement')
+    # print(_deployment_script_preamble)
+    cur.execute(_deployment_script_preamble)
+
+    # Get schema name from project configuration
+    schema_name = ''
+    if config_obj.subclass == 'versioned':
+        schema_name = '{0}_{1}'.format(config_obj.name, config_obj.version.to_string())
+        print(TermStyle.PREFIX_INFO + 'Schema {0} will be updated'.format(schema_name))
+    elif config_obj.subclass == 'basic':
+        schema_name = '{0}'.format(config_obj.name)
+        if not arguments['--file']:
+            print(TermStyle.PREFIX_INFO + 'Schema {0} will be created/replaced'.format(schema_name))
+        else:
+            print(TermStyle.PREFIX_INFO + 'Schema {0} will be updated'.format(schema_name))
+
+    # Create schema or update it if exists (if not in production mode) and set search path
+    if arguments['--file']:  # if specific scripts to be deployed
+        if not schema_exists(cur, schema_name):
+            print(TermStyle.PREFIX_ERROR + 'Can\'t deploy scripts to schema {0}. Schema doesn\'t exist in database'
+                  .format(schema_name))
+            close_db_conn(cur, conn, arguments.get('<connection_string>'))
+            sys.exit(1)
+        else:
+            _set_search_path_schema_script = SET_SEARCH_PATH.format(schema_name)
+            cur.execute(_set_search_path_schema_script)
+            print(TermStyle.PREFIX_INFO +
+                  'Search_path was changed to schema {0}'.format(schema_name))
+    else:
+        if not schema_exists(cur, schema_name):
+            create_db_schema(cur, schema_name, user_roles, owner_role)
+        elif arguments['--mode'][0] == 'safe':
+            print(TermStyle.PREFIX_ERROR +
+                  'Schema already exists. It won\'t be overriden in safe mode. Rerun your script without '
+                  '"-m moderate" or "-m unsafe" flags')
+            close_db_conn(cur, conn, arguments.get('<connection_string>'))
+            sys.exit(1)
+        elif arguments['--mode'][0] == 'moderate':
+            _old_schema_exists = True
+            _old_schema_rev = 0
+            while _old_schema_exists:
+                cur.execute("SELECT EXISTS (SELECT schema_name FROM information_schema.schemata "
+                            "WHERE schema_name = '{0}');".format(schema_name + '_' + str(_old_schema_rev)))
+                _old_schema_exists = cur.fetchone()[0]
+                if _old_schema_exists:
+                    _old_schema_rev += 1
+            _old_schema_name = schema_name + '_' + str(_old_schema_rev)
+            print(TermStyle.PREFIX_INFO +
+                  'Schema already exists. It will be renamed to {0} in moderate mode. Renaming...'
+                  .format(_old_schema_name))
+            _rename_schema_script = "ALTER SCHEMA {0} RENAME TO {1};\n".format(schema_name, _old_schema_name)
+            cur.execute(_rename_schema_script)
+            # Add metadata to pgpm schema
+            cur.execute(SET_SEARCH_PATH.format(_variables.PGPM_SCHEMA_NAME))
+            cur.callproc('{0}._add_package_info'.format(_variables.PGPM_SCHEMA_NAME),
+                         [config_obj.name,
+                          config_obj.subclass,
+                          _old_schema_rev,
+                          config_obj.version.major,
+                          config_obj.version.minor,
+                          config_obj.version.patch,
+                          config_obj.version.pre,
+                          config_obj.version.metadata,
+                          config_obj.description,
+                          config_obj.license])
+            print(TermStyle.PREFIX_INFO + 'Schema {0} was renamed to {1}. Meta info was added to {2} schema'
+                  .format(schema_name, _old_schema_name, _variables.PGPM_SCHEMA_NAME))
+            create_db_schema(cur, schema_name, user_roles, owner_role)
+        else:
+            _drop_schema_script = "DROP SCHEMA {0} CASCADE;\n".format(schema_name)
+            cur.execute(_drop_schema_script)
+            print(TermStyle.PREFIX_INFO + 'Dropping old schema {0}'.format(schema_name))
+            create_db_schema(cur, schema_name, user_roles, owner_role)
+
+    # Reordering and executing types
+    if types_files_count > 0:
+        if arguments['--file']:
+            print(TermStyle.PREFIX_ERROR +
+                  'Deploying types definition scripts in existing schema without dropping it first '
+                  'is not support yet. Skipping')
+            sys.exit(1)
+        else:
+            type_ordered_scripts, type_unordered_scripts = reorder_types(types_script)
+            # uncomment for debug
+            # print(TermStyle.BOLD_ON + TermStyle.FONT_WHITE + '\n'.join(type_ordered_scripts))
+            if type_ordered_scripts:
+                cur.execute('\n'.join(type_ordered_scripts))
+            if type_unordered_scripts:
+                cur.execute('\n'.join(type_unordered_scripts))
+            print(TermStyle.PREFIX_INFO + 'Types loaded to schema {0}'.format(schema_name))
+    else:
+        print(TermStyle.PREFIX_INFO + 'No type scripts to deploy')
+
+    # Executing functions
+    if functions_files_count > 0:
+        print(TermStyle.PREFIX_INFO + 'Running functions definitions scripts')
+        # print(TermStyle.HEADER + functions_script)
+        cur.execute(functions_script)
+        print(TermStyle.PREFIX_INFO + 'Functions loaded to schema {0}'.format(schema_name))
+    else:
+        print(TermStyle.PREFIX_INFO + 'No function scripts to deploy')
+
+    # Executing views
+    if views_files_count > 0:
+        print(TermStyle.PREFIX_INFO + 'Running views definitions scripts')
+        # print(TermStyle.HEADER + views_script)
+        cur.execute(views_script)
+        print(TermStyle.PREFIX_INFO + 'Views loaded to schema {0}'.format(schema_name))
+    else:
+        print(TermStyle.PREFIX_INFO + 'No view scripts to deploy')
+
+    # Executing tables
+    if tables_files_count > 0:
+        print(TermStyle.PREFIX_WARNING + 'Support for DDL or data updates is not implemented yet')
+    else:
+        print(TermStyle.PREFIX_INFO + 'No DDL or data update scripts to deploy')
+
+    # Executing triggers
+    if triggers_files_count > 0:
+        print(TermStyle.PREFIX_INFO + 'Running views definitions scripts')
+        # print(TermStyle.HEADER + triggers_script)
+        cur.execute(triggers_script)
+        print(TermStyle.PREFIX_INFO + 'Views loaded to schema {0}'.format(schema_name))
+    else:
+        print(TermStyle.PREFIX_INFO + 'No view scripts to deploy')
+
+    # Add metadata to pgpm schema
+    cur.execute(SET_SEARCH_PATH.format(_variables.PGPM_SCHEMA_NAME))
+    cur.callproc('{0}._add_package_info'.format(_variables.PGPM_SCHEMA_NAME),
+                 [config_obj.name,
+                  config_obj.subclass,
+                  None,
+                  config_obj.version.major,
+                  config_obj.version.minor,
+                  config_obj.version.patch,
+                  config_obj.version.pre,
+                  config_obj.version.metadata,
+                  config_obj.description,
+                  config_obj.license])
+    print(TermStyle.PREFIX_INFO + 'Meta info about deployment was added to schema {0}'
+          .format(_variables.PGPM_SCHEMA_NAME))
+
+    # Commit transaction
+    conn.commit()
+
+    close_db_conn(cur, conn, arguments.get('<connection_string>'))
+
+
+def main():
+    arguments = docopt(__doc__, version=_version.__version__)
     if arguments['install']:
         install_manager(arguments['<connection_string>'])
     elif arguments['deploy']:
-        # Load project configuration file
-        print('\n' + TermStyle.PREFIX_INFO + 'Loading project configuration...')
-        config_json = open(_variables.CONFIG_FILE_NAME)
-        config_data = json.load(config_json)
-        config_json.close()
-        if arguments['--add-config']:
-            print('\n' + TermStyle.PREFIX_INFO + 'Adding additional configuration file {0}'.
-                  format(arguments['--add-config']))
-            add_config_json = open(arguments['--add-config'])
-            config_data = dict(list(config_data.items()) + list(json.load(add_config_json).items()))
-            add_config_json.close()
-        config_obj = config.SchemaConfiguration(config_data)
-
-        # Check if owner role and user roles are to be defined with config files
-        if not owner_role and config_obj.owner_role:
-            owner_role = config_obj.owner_role
-        if not user_roles and config_obj.user_roles:
-            user_roles = config_obj.user_roles
-
-        print(TermStyle.PREFIX_INFO + 'Configuration of project {0} of version {1} loaded successfully.'
-              .format(config_obj.name, config_obj.version.to_string()))
-
-        # Resolve dependencies
-        resolve_dependencies
-
-        # Get scripts
-        types_script, types_files_count = get_scripts("types_path", config_data, files_deployment, "types")
-        functions_script, functions_files_count = get_scripts("functions_path", config_data, files_deployment,
-                                                              "functions")
-        views_script, views_files_count = get_scripts("views_path", config_data, files_deployment, "views")
-        tables_script, tables_files_count = get_scripts("tables_path", config_data, files_deployment, "tables")
-        triggers_script, triggers_files_count = get_scripts("triggers_path", config_data, files_deployment, "triggers")
-
-        # Connect to DB
-        conn, cur = connect_db(arguments['<connection_string>'])
-        # Check if DB is pgpm enabled
-        if not schema_exists(cur, _variables.PGPM_SCHEMA_NAME):
-            print('\n' + TermStyle.PREFIX_ERROR + 'Can\'t deploy schemas to DB where pgpm was not installed. '
-                                                  'First install pgpm by running pgpm install')
-            close_db_conn(cur, conn, arguments['<connection_string>'])
-            sys.exit(1)
-
-        # Prepare and execute preamble
-        _deployment_script_preamble = pkgutil.get_data('pgpm', 'scripts/deploy_prepare_config.sql')
-        print(TermStyle.PREFIX_INFO + 'Executing a preamble to deployment statement')
-        # print(_deployment_script_preamble)
-        cur.execute(_deployment_script_preamble)
-
-        # Get schema name from project configuration
-        schema_name = ''
-        if config_obj.subclass == 'versioned':
-            schema_name = '{0}_{1}'.format(config_obj.name, config_obj.version.to_string())
-            print(TermStyle.PREFIX_INFO + 'Schema {0} will be updated'.format(schema_name))
-        elif config_obj.subclass == 'basic':
-            schema_name = '{0}'.format(config_obj.name)
-            if not arguments['--file']:
-                print(TermStyle.PREFIX_INFO + 'Schema {0} will be created/replaced'.format(schema_name))
-            else:
-                print(TermStyle.PREFIX_INFO + 'Schema {0} will be updated'.format(schema_name))
-
-        # Create schema or update it if exists (if not in production mode) and set search path
-        if arguments['--file']:  # if specific scripts to be deployed
-            if not schema_exists(cur, schema_name):
-                print(TermStyle.PREFIX_ERROR + 'Can\'t deploy scripts to schema {0}. Schema doesn\'t exist in database'
-                      .format(schema_name))
-                close_db_conn(cur, conn, arguments.get('<connection_string>'))
-                sys.exit(1)
-            else:
-                _set_search_path_schema_script = SET_SEARCH_PATH.format(schema_name)
-                cur.execute(_set_search_path_schema_script)
-                print(TermStyle.PREFIX_INFO +
-                      'Search_path was changed to schema {0}'.format(schema_name))
-        else:
-            if not schema_exists(cur, schema_name):
-                create_db_schema(cur, schema_name, user_roles, owner_role)
-            elif arguments['--mode'][0] == 'safe':
-                print(TermStyle.PREFIX_ERROR +
-                      'Schema already exists. It won\'t be overriden in safe mode. Rerun your script without '
-                      '"-m moderate" or "-m unsafe" flags')
-                close_db_conn(cur, conn, arguments.get('<connection_string>'))
-                sys.exit(1)
-            elif arguments['--mode'][0] == 'moderate':
-                _old_schema_exists = True
-                _old_schema_rev = 0
-                while _old_schema_exists:
-                    cur.execute("SELECT EXISTS (SELECT schema_name FROM information_schema.schemata "
-                                "WHERE schema_name = '{0}');".format(schema_name + '_' + str(_old_schema_rev)))
-                    _old_schema_exists = cur.fetchone()[0]
-                    if _old_schema_exists:
-                        _old_schema_rev += 1
-                _old_schema_name = schema_name + '_' + str(_old_schema_rev)
-                print(TermStyle.PREFIX_INFO +
-                      'Schema already exists. It will be renamed to {0} in moderate mode. Renaming...'
-                      .format(_old_schema_name))
-                _rename_schema_script = "ALTER SCHEMA {0} RENAME TO {1};\n".format(schema_name, _old_schema_name)
-                cur.execute(_rename_schema_script)
-                # Add metadata to pgpm schema
-                cur.execute(SET_SEARCH_PATH.format(_variables.PGPM_SCHEMA_NAME))
-                cur.callproc('{0}._add_package_info'.format(_variables.PGPM_SCHEMA_NAME),
-                             [config_obj.name,
-                              config_obj.subclass,
-                              _old_schema_rev,
-                              config_obj.version.major,
-                              config_obj.version.minor,
-                              config_obj.version.patch,
-                              config_obj.version.pre,
-                              config_obj.version.metadata,
-                              config_obj.description,
-                              config_obj.license])
-                print(TermStyle.PREFIX_INFO + 'Schema {0} was renamed to {1}. Meta info was added to {2} schema'
-                      .format(schema_name, _old_schema_name, _variables.PGPM_SCHEMA_NAME))
-                create_db_schema(cur, schema_name, user_roles, owner_role)
-            else:
-                _drop_schema_script = "DROP SCHEMA {0} CASCADE;\n".format(schema_name)
-                cur.execute(_drop_schema_script)
-                print(TermStyle.PREFIX_INFO + 'Dropping old schema {0}'.format(schema_name))
-                create_db_schema(cur, schema_name, user_roles, owner_role)
-
-        # Reordering and executing types
-        if types_files_count > 0:
-            if arguments['--file']:
-                print(TermStyle.PREFIX_ERROR +
-                      'Deploying types definition scripts in existing schema without dropping it first '
-                      'is not support yet. Skipping')
-                sys.exit(1)
-            else:
-                type_ordered_scripts, type_unordered_scripts = reorder_types(types_script)
-                # uncomment for debug
-                # print(TermStyle.BOLD_ON + TermStyle.FONT_WHITE + '\n'.join(type_ordered_scripts))
-                if type_ordered_scripts:
-                    cur.execute('\n'.join(type_ordered_scripts))
-                if type_unordered_scripts:
-                    cur.execute('\n'.join(type_unordered_scripts))
-                print(TermStyle.PREFIX_INFO + 'Types loaded to schema {0}'.format(schema_name))
-        else:
-            print(TermStyle.PREFIX_INFO + 'No type scripts to deploy')
-
-        # Executing functions
-        if functions_files_count > 0:
-            print(TermStyle.PREFIX_INFO + 'Running functions definitions scripts')
-            # print(TermStyle.HEADER + functions_script)
-            cur.execute(functions_script)
-            print(TermStyle.PREFIX_INFO + 'Functions loaded to schema {0}'.format(schema_name))
-        else:
-            print(TermStyle.PREFIX_INFO + 'No function scripts to deploy')
-
-        # Executing views
-        if views_files_count > 0:
-            print(TermStyle.PREFIX_INFO + 'Running views definitions scripts')
-            # print(TermStyle.HEADER + views_script)
-            cur.execute(views_script)
-            print(TermStyle.PREFIX_INFO + 'Views loaded to schema {0}'.format(schema_name))
-        else:
-            print(TermStyle.PREFIX_INFO + 'No view scripts to deploy')
-
-        # Executing tables
-        if tables_files_count > 0:
-            print(TermStyle.PREFIX_WARNING + 'Support for DDL or data updates is not implemented yet')
-        else:
-            print(TermStyle.PREFIX_INFO + 'No DDL or data update scripts to deploy')
-
-        # Executing triggers
-        if triggers_files_count > 0:
-            print(TermStyle.PREFIX_INFO + 'Running views definitions scripts')
-            # print(TermStyle.HEADER + triggers_script)
-            cur.execute(triggers_script)
-            print(TermStyle.PREFIX_INFO + 'Views loaded to schema {0}'.format(schema_name))
-        else:
-            print(TermStyle.PREFIX_INFO + 'No view scripts to deploy')
-
-        # Add metadata to pgpm schema
-        cur.execute(SET_SEARCH_PATH.format(_variables.PGPM_SCHEMA_NAME))
-        cur.callproc('{0}._add_package_info'.format(_variables.PGPM_SCHEMA_NAME),
-                     [config_obj.name,
-                      config_obj.subclass,
-                      None,
-                      config_obj.version.major,
-                      config_obj.version.minor,
-                      config_obj.version.patch,
-                      config_obj.version.pre,
-                      config_obj.version.metadata,
-                      config_obj.description,
-                      config_obj.license])
-        _after_deploy_script = pkgutil.get_data('pgpm', 'scripts/after_deploy.sql')
-        cur.execute(_after_deploy_script)
-        print(TermStyle.PREFIX_INFO + 'Meta info about deployment was added to schema {0}'.format(_variables.PGPM_SCHEMA_NAME))
-
-        # Commit transaction
-        conn.commit()
-
-        close_db_conn(cur, conn, arguments.get('<connection_string>'))
-
+        deployment_manager(arguments)
     else:
         print(arguments)
 

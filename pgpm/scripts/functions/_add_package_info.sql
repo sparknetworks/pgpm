@@ -13,7 +13,7 @@ CREATE OR REPLACE FUNCTION _add_package_info(p_pkg_name TEXT,
 $BODY$
 ---
 -- @description
--- Adds package info to pgpm package info table
+-- Adds package info to pgpm package info table, deployment events table and notifies channels of deployment
 --
 -- @param p_pkg_name
 -- package name
@@ -82,9 +82,8 @@ BEGIN
     END IF;
 
     IF FOUND THEN -- Case 1:
-        UPDATE packages
-        SET pkg_last_modified = now()
-        WHERE pkg_id = l_existing_pkg_id;
+        INSERT INTO deployment_events (dpl_ev_pkg_id)
+            VALUES (l_existing_pkg_id);
     ELSE -- Case 2 and 3:
         INSERT INTO packages (
             pkg_name,
@@ -113,7 +112,12 @@ BEGIN
         RETURNING
             pkg_id
         INTO return_value;
+
+        INSERT INTO deployment_events DEFAULT VALUES;
     END IF;
+
+    -- Notify external channels of successful deployment event
+    SELECT pg_notify('deployment_events' || '$$' || p_pkg_name, p_pkg_v_major || '_' || p_pkg_v_minor || '_' || p_pkg_v_patch);
 
     RETURN return_value;
 END;
