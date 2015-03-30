@@ -16,14 +16,15 @@ $$BEGIN
         'Subclass of package. Can refer either to versioned schema (that adds suffix at the end)
          or non-versioned (basic) one (without suffix at the end)';
 
-    -- remove vcf reference, created and last modified (will be moved to deployment_events table), add comments
-    -- and change varchar to text
+    -- remove vcf reference, created and last modified (will be moved to deployment_events table), add comments,
+    -- change varchar to text and bump version of pgpm to 0.0.6
     ALTER TABLE packages DROP COLUMN pkg_created;
     ALTER TABLE packages DROP COLUMN pkg_last_modified;
     ALTER TABLE packages DROP COLUMN pkg_vcs_ref;
     ALTER TABLE packages ALTER COLUMN pkg_name TYPE TEXT;
     ALTER TABLE packages ALTER COLUMN pkg_v_pre TYPE TEXT;
     ALTER TABLE packages ALTER COLUMN pkg_v_metadata TYPE TEXT;
+    UPDATE packages SET pkg_v_major = 0, pkg_v_minor = 0, pkg_v_patch = 6 WHERE pkg_name = '{pgpm_schema_name}';
     COMMENT ON TABLE packages IS
         'Information about package (schema) tracked with pgpm.';
     COMMENT ON COLUMN packages.pkg_v_major IS

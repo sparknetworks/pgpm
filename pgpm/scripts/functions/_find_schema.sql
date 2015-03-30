@@ -1,5 +1,5 @@
 CREATE OR REPLACE FUNCTION _find_schema(p_schema_name TEXT, p_v_req TEXT)
-    RETURNS JSON AS
+    RETURNS RECORD AS
 $BODY$
 ---
 -- @description
@@ -17,18 +17,106 @@ $BODY$
 -- Package name must comply with naming conventions of postgres, exist as schema and be trackable by pgpm in order to satisfy dependency
 --
 -- @returns
--- JSON string containing schema name and exact version or exception if not found
+-- Record containing schema name and exact version or exception if not found
 ---
 DECLARE
     c_re_version TEXT = '^(<=|>=|<|>{0,2})(\d*|x*)_?(\d*|x*)_?(\d*|x*)';
     l_v_matches TEXT[];
+    l_v_major INTEGER;
+    l_v_minor INTEGER;
+    l_v_patch INTEGER;
+
+    return_value RECORD;
 BEGIN
 
-    SELECT regexp_matches(p_v_req, c_re_version, 'g') INTO l_v_matches;
+    SELECT regexp_matches(p_v_req, c_re_version, 'gi') INTO l_v_matches;
 
---     IF l_v_matches[0] = '='
---     SELECT pkg_name FROM _pgpm.packages WHERE pkg_name = '_pgpm';
--- TODO: Implement
+    if l_v_matches[2] ~* '^x+|^$' THEN
+        SELECT max(pkg_v_major)
+        FROM packages
+        WHERE pkg_name = p_schema_name
+        INTO l_v_major;
+    ELSE
+        l_v_major := l_v_matches[2]::integer;
+    END IF;
+
+    if l_v_matches[3] ~* '^x+|^$' THEN
+        SELECT max(pkg_v_minor)
+        FROM packages
+        WHERE pkg_name = p_schema_name
+        INTO l_v_minor;
+    ELSE
+        l_v_minor := l_v_matches[3]::integer;
+    END IF;
+
+    if l_v_matches[4] ~* '^x+|^$' THEN
+        SELECT max(pkg_v_patch)
+        FROM packages
+        WHERE pkg_name = p_schema_name
+        INTO l_v_patch;
+    ELSE
+        l_v_patch := l_v_matches[4]::integer;
+    END IF;
+
+    CASE l_v_matches[1]
+        WHEN '=', '' THEN
+            SELECT DISTINCT pkg_name, pkg_v_major, pkg_v_minor, pkg_v_patch
+            FROM packages
+            WHERE pkg_name = p_schema_name
+                  AND pkg_v_major = l_v_major
+                  AND pkg_v_minor = l_v_minor
+                  AND pkg_v_patch = l_v_patch
+            INTO return_value;
+        WHEN '<' THEN
+            SELECT DISTINCT pkg_name, pkg_v_major, pkg_v_minor, pkg_v_patch
+            FROM packages
+            WHERE pkg_name = p_schema_name
+                  AND (pkg_v_major < l_v_major
+                       OR (pkg_v_major = l_v_major
+                           AND pkg_v_minor < l_v_minor)
+                       OR (pkg_v_major = l_v_major
+                           AND pkg_v_minor = l_v_minor
+                           AND pkg_v_patch < l_v_patch))
+            INTO return_value;
+        WHEN '>' THEN
+            SELECT DISTINCT pkg_name, pkg_v_major, pkg_v_minor, pkg_v_patch
+            FROM packages
+            WHERE pkg_name = p_schema_name
+                  AND (pkg_v_major > l_v_major
+                       OR (pkg_v_major = l_v_major
+                           AND pkg_v_minor > l_v_minor)
+                       OR (pkg_v_major = l_v_major
+                           AND pkg_v_minor = l_v_minor
+                           AND pkg_v_patch > l_v_patch))
+            INTO return_value;
+        WHEN '<=' THEN
+            SELECT DISTINCT pkg_name, pkg_v_major, pkg_v_minor, pkg_v_patch
+            FROM packages
+            WHERE pkg_name = p_schema_name
+                  AND (pkg_v_major <= l_v_major
+                       OR (pkg_v_major = l_v_major
+                           AND pkg_v_minor <= l_v_minor)
+                       OR (pkg_v_major = l_v_major
+                           AND pkg_v_minor = l_v_minor
+                           AND pkg_v_patch <= l_v_patch))
+            INTO return_value;
+        WHEN '>=' THEN
+            SELECT DISTINCT pkg_name, pkg_v_major, pkg_v_minor, pkg_v_patch
+            FROM packages
+            WHERE pkg_name = p_schema_name
+                  AND (pkg_v_major >= l_v_major
+                       OR (pkg_v_major = l_v_major
+                           AND pkg_v_minor >= l_v_minor)
+                       OR (pkg_v_major = l_v_major
+                           AND pkg_v_minor = l_v_minor
+                           AND pkg_v_patch >= l_v_patch))
+            INTO return_value;
+        ELSE
+            RAISE EXCEPTION 'Invalid logical operand. Only <, >, =, <=, >=, = or no operand are allowed.' USING ERRCODE = '20000';
+    END CASE;
+
+    RETURN return_value;
+
 END;
 $BODY$
     LANGUAGE 'plpgsql' VOLATILE SECURITY DEFINER

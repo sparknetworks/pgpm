@@ -37,6 +37,7 @@ class VersionTypes(object):
     semver = 'semver'
     x_postgres = 'x_postgres'
     x_semver = 'x_semver'
+    python = 'python'
 
 
 class Version(object):
@@ -78,6 +79,15 @@ class Version(object):
                 self.patch = -1
             else:
                 self.patch = int(version_list[0][2])
+        elif version_type == VersionTypes.python:
+            # Implementation from http://svn.python.org/projects/python/branches/pep-0384/Lib/distutils/version.py
+            version_r = re.compile(r'^(\d+) \. (\d+) (\. (\d+))? ([ab](\d+))?$', re.VERBOSE)
+            version_match = version_r.match(version_string)
+            if not version_match:
+                raise ValueError("invalid version number '%s'" % version_string)
+
+            (self.major, self.minor, self.patch, self.pre, self.metadata) = \
+                version_match.group(1, 2, 4, 5, 6)
         elif version_type == VersionTypes.semver:
             pass  # TODO: implement
         else:

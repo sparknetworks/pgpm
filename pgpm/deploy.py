@@ -269,7 +269,7 @@ def install_manager(connection_string):
 
         # get pgpm functions
         script, files_count = collect_scripts_from_files('{0}/scripts/functions'
-                                                         .format(os.path.dirname(inspect.getfile(inspect))), False)
+                                                         .format(os.path.dirname(inspect.getfile(_version))), False)
 
         # Executing pgpm functions
         if files_count > 0:
@@ -282,7 +282,9 @@ def install_manager(connection_string):
 
         cur.callproc('{0}._add_package_info'.format(_variables.PGPM_SCHEMA_NAME),
                      [_variables.PGPM_SCHEMA_NAME, _variables.PGPM_SCHEMA_SUBCLASS, None,
-                      0, 0, 1, None, None, 'Package manager for Postgres', 'MIT'])
+                      _variables.PGPM_VERSION.major, _variables.PGPM_VERSION.minor, _variables.PGPM_VERSION.patch,
+                      _variables.PGPM_VERSION.pre, _variables.PGPM_VERSION.metadata,
+                      'Package manager for Postgres', 'MIT'])
 
     # Commit transaction
     conn.commit()
@@ -296,6 +298,7 @@ def deployment_manager(arguments):
     :param arguments: params from cli
     :return:
     """
+
     user_roles = arguments['--user']
     if arguments['--owner']:
         owner_role = arguments['--owner'][0]
@@ -325,9 +328,6 @@ def deployment_manager(arguments):
     print(TermStyle.PREFIX_INFO + 'Configuration of project {0} of version {1} loaded successfully.'
           .format(config_obj.name, config_obj.version.to_string()))
 
-    # Resolve dependencies
-    # TODO: Implement resolve_dependencies
-
     # Get scripts
     types_script, types_files_count = get_scripts("types_path", config_data, files_deployment, "types")
     functions_script, functions_files_count = get_scripts("functions_path", config_data, files_deployment,
@@ -344,6 +344,12 @@ def deployment_manager(arguments):
                                               'First install pgpm by running pgpm install')
         close_db_conn(cur, conn, arguments['<connection_string>'])
         sys.exit(1)
+
+    # check installed version of _pgpm schema.
+    _get_pgpm_installed_v(cur)
+
+    # Resolve dependencies
+    # TODO: Implement resolve_dependencies
 
     # Prepare and execute preamble
     _deployment_script_preamble = pkgutil.get_data('pgpm', 'scripts/deploy_prepare_config.sql')
@@ -493,6 +499,25 @@ def deployment_manager(arguments):
     conn.commit()
 
     close_db_conn(cur, conn, arguments.get('<connection_string>'))
+
+
+def _get_pgpm_installed_v(cur):
+    """
+
+    :return:
+    """
+    migrations_path = '{0}/{1}'.format(os.path.dirname(inspect.getfile(_version)), _variables.MIGRATIONS_FOLDER_NAME)
+    print(migrations_path)
+    cur.execute(SET_SEARCH_PATH.format(_variables.PGPM_SCHEMA_NAME))
+    cur.execute("SELECT {0}._find_schema('{1}', '{2}')"
+                .format(_variables.PGPM_SCHEMA_NAME, _variables.PGPM_SCHEMA_NAME, 'x'))
+    if os.path.isdir(migrations_path):
+        for subdir, dirs, files in os.walk(migrations_path):
+            for file_info in files:
+                # migration_script = io.open(os.path.join(subdir, file_info), 'r', -1, 'utf-8-sig').read()
+                pass
+
+    a = cur.fetchone()[0]
 
 
 def main():
