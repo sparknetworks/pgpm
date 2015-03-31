@@ -24,7 +24,7 @@ $$BEGIN
     ALTER TABLE packages ALTER COLUMN pkg_name TYPE TEXT;
     ALTER TABLE packages ALTER COLUMN pkg_v_pre TYPE TEXT;
     ALTER TABLE packages ALTER COLUMN pkg_v_metadata TYPE TEXT;
-    UPDATE packages SET pkg_v_major = 0, pkg_v_minor = 0, pkg_v_patch = 6 WHERE pkg_name = '{pgpm_schema_name}';
+    UPDATE packages SET pkg_v_major = 0, pkg_v_minor = 0, pkg_v_patch = 6 WHERE pkg_name = '{schema_name}';
     COMMENT ON TABLE packages IS
         'Information about package (schema) tracked with pgpm.';
     COMMENT ON COLUMN packages.pkg_v_major IS
@@ -74,8 +74,5 @@ $$BEGIN
         'ID of an issue in issue tracker. E.g. ABS-111 for JIRA.';
     COMMENT ON COLUMN deployment_events.dpl_ev_issue_link IS
         'Link to an issue related to this deployment in issue tracker.';
-
-    -- Create or replace all functions now
-    {functions_list}
 
 END$$;

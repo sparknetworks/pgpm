@@ -117,9 +117,9 @@ BEGIN
     END IF;
 
     -- Notify external channels of successful deployment event
-    SELECT pg_notify('deployment_events' || '$$' || p_pkg_name, p_pkg_v_major || '_' || p_pkg_v_minor || '_' || p_pkg_v_patch);
+    PERFORM pg_notify('deployment_events' || '$$' || p_pkg_name, p_pkg_v_major || '_' || p_pkg_v_minor || '_' || p_pkg_v_patch);
 
     RETURN return_value;
 END;
 $BODY$
-    LANGUAGE 'plpgsql' VOLATILE SECURITY DEFINER
+    LANGUAGE 'plpgsql' VOLATILE SECURITY DEFINER;

@@ -53,13 +53,14 @@ import re
 import sys
 import io
 import pkgutil
-import inspect
+import pkg_resources
 
 from pgpm.utils import config
 
 from pgpm import _version, _variables
 from pgpm.utils.term_out_ui import TermStyle
 from docopt import docopt
+from distutils import version
 
 SET_SEARCH_PATH = "SET search_path TO {0}, public;"
 
@@ -118,7 +119,7 @@ def find_whole_word(w):
     return re.compile(r'\b({0})\b'.format(w), flags=re.IGNORECASE).search
 
 
-def collect_scripts_from_files(script_paths, files_deployment):
+def collect_scripts_from_files(script_paths, files_deployment, is_package=False):
     """
     Collects postgres scripts from source files
     """
@@ -140,17 +141,27 @@ def collect_scripts_from_files(script_paths, files_deployment):
             else:
                 print(TermStyle.PREFIX_WARNING + 'File {0} does not exist, please specify a correct path'
                       .format(list_file_name))
-
         else:
-            for script_path in script_paths:
-                for subdir, dirs, files in os.walk(script_path):
+            if is_package:
+                for script_path in script_paths:
                     # print(subdir, dirs)  # uncomment for debugging
-                    for file_info in files:
+                    for file_info in pkg_resources.resource_listdir(__name__, script_path):
                         script_files_count += 1
-                        script += io.open(os.path.join(subdir, file_info), 'r', -1, 'utf-8-sig').read()
+                        script += pkg_resources.resource_string(__name__, '{0}/{1}'.format(script_path, file_info))\
+                            .decode('utf-8')
                         script += '\n'
                         print(TermStyle.PREFIX_INFO_IMPORTANT + TermStyle.BOLD_ON +
-                              '{0}'.format(os.path.join(subdir, file_info)) + TermStyle.RESET)
+                              '{0}/{1}'.format(script_path, file_info) + TermStyle.RESET)
+            else:
+                for script_path in script_paths:
+                    for subdir, dirs, files in os.walk(script_path):
+                        # print(subdir, dirs)  # uncomment for debugging
+                        for file_info in files:
+                            script_files_count += 1
+                            script += io.open(os.path.join(subdir, file_info), 'r', -1, 'utf-8-sig').read()
+                            script += '\n'
+                            print(TermStyle.PREFIX_INFO_IMPORTANT + TermStyle.BOLD_ON +
+                                  '{0}'.format(os.path.join(subdir, file_info)) + TermStyle.RESET)
     return script, script_files_count
 
 
@@ -244,18 +255,32 @@ def resolve_dependencies(cur, dependencies):
     # for k, v in dependencies.items():
 
 
-def install_manager(connection_string):
+def install_manager(arguments):
     """
     Installs package manager
     """
-    conn, cur = connect_db(connection_string)
+    conn, cur = connect_db(arguments['<connection_string>'])
 
     # Create schema if it doesn't exist
     if schema_exists(cur,_variables.PGPM_SCHEMA_NAME):
-        print(TermStyle.PREFIX_ERROR +
-              'Can\'t install pgpm as schema {0} already exists'.format(_variables.PGPM_SCHEMA_NAME))
-        close_db_conn(cur, conn, connection_string)
-        sys.exit(1)
+        # check installed version of _pgpm schema.
+        pgpm_v_db_tuple = _get_pgpm_installed_v(cur)
+        pgpm_v_db = version.StrictVersion(".".join(pgpm_v_db_tuple))
+        pgpm_v_script = version.StrictVersion(_version.__version__)
+        if pgpm_v_script > pgpm_v_db:
+            if arguments['--update']:
+                _migrate_pgpm_version(cur, conn, arguments['<connection_string>'], True)
+            else:
+                _migrate_pgpm_version(cur, conn, arguments['<connection_string>'], False)
+        elif pgpm_v_script < pgpm_v_db:
+            print('\n' + TermStyle.PREFIX_ERROR + 'Deployment script\'s version is lower than the version of {0} schema'
+                                                  'installed in DB. Update pgpm script first.'
+                  .format(_variables.PGPM_SCHEMA_NAME))
+        else:
+            print(TermStyle.PREFIX_ERROR +
+                  'Can\'t install pgpm as schema {0} already exists'.format(_variables.PGPM_SCHEMA_NAME))
+            close_db_conn(cur, conn, arguments['<connection_string>'])
+            sys.exit(1)
     else:
         # Prepare and execute preamble
         _deployment_script_preamble = pkgutil.get_data('pgpm', 'scripts/deploy_prepare_config.sql')
@@ -267,29 +292,27 @@ def install_manager(connection_string):
         print(TermStyle.PREFIX_INFO + 'Installing package manager')
         cur.execute(_install_script.format(schema_name=_variables.PGPM_SCHEMA_NAME))
 
-        # get pgpm functions
-        script, files_count = collect_scripts_from_files('{0}/scripts/functions'
-                                                         .format(os.path.dirname(inspect.getfile(_version))), False)
+    # get pgpm functions
+    script, files_count = collect_scripts_from_files('scripts/functions', False, True)
 
-        # Executing pgpm functions
-        if files_count > 0:
-            print(TermStyle.PREFIX_INFO + 'Running functions definitions scripts')
-            # print(TermStyle.HEADER + functions_script)
-            cur.execute(script)
-            print(TermStyle.PREFIX_INFO + 'Functions loaded to schema {0}'.format(_variables.PGPM_SCHEMA_NAME))
-        else:
-            print(TermStyle.PREFIX_INFO + 'No function scripts to deploy')
+    # Executing pgpm functions
+    if files_count > 0:
+        print(TermStyle.PREFIX_INFO + 'Running functions definitions scripts')
+        # print(TermStyle.HEADER + functions_script)
+        cur.execute(script)
+        print(TermStyle.PREFIX_INFO + 'Functions loaded to schema {0}'.format(_variables.PGPM_SCHEMA_NAME))
+    else:
+        print(TermStyle.PREFIX_INFO + 'No function scripts to deploy')
 
-        cur.callproc('{0}._add_package_info'.format(_variables.PGPM_SCHEMA_NAME),
-                     [_variables.PGPM_SCHEMA_NAME, _variables.PGPM_SCHEMA_SUBCLASS, None,
-                      _variables.PGPM_VERSION.major, _variables.PGPM_VERSION.minor, _variables.PGPM_VERSION.patch,
-                      _variables.PGPM_VERSION.pre, _variables.PGPM_VERSION.metadata,
-                      'Package manager for Postgres', 'MIT'])
-
+    cur.callproc('{0}._add_package_info'.format(_variables.PGPM_SCHEMA_NAME),
+                 [_variables.PGPM_SCHEMA_NAME, _variables.PGPM_SCHEMA_SUBCLASS, None,
+                  _variables.PGPM_VERSION.major, _variables.PGPM_VERSION.minor, _variables.PGPM_VERSION.patch,
+                  _variables.PGPM_VERSION.pre, _variables.PGPM_VERSION.metadata,
+                  'Package manager for Postgres', 'MIT'])
     # Commit transaction
     conn.commit()
 
-    close_db_conn(cur, conn, connection_string)
+    close_db_conn(cur, conn, arguments['<connection_string>'])
 
 
 def deployment_manager(arguments):
@@ -346,7 +369,18 @@ def deployment_manager(arguments):
         sys.exit(1)
 
     # check installed version of _pgpm schema.
-    _get_pgpm_installed_v(cur)
+    pgpm_v_db_tuple = _get_pgpm_installed_v(cur)
+    pgpm_v_db = version.StrictVersion(".".join(pgpm_v_db_tuple))
+    pgpm_v_script = version.StrictVersion(_version.__version__)
+    if pgpm_v_script > pgpm_v_db:
+        _migrate_pgpm_version(cur, conn, arguments['<connection_string>'], False)
+    elif pgpm_v_script < pgpm_v_db:
+        print('\n' + TermStyle.PREFIX_ERROR + 'Deployment script\'s version is lower than the version of {0} schema'
+                                              'installed in DB. Update pgpm script first.'
+              .format(_variables.PGPM_SCHEMA_NAME))
+        close_db_conn(cur, conn, arguments['<connection_string>'])
+        sys.exit(1)
+
 
     # Resolve dependencies
     # TODO: Implement resolve_dependencies
@@ -503,27 +537,52 @@ def deployment_manager(arguments):
 
 def _get_pgpm_installed_v(cur):
     """
-
+    returns current version of pgpm schema
     :return:
     """
-    migrations_path = '{0}/{1}'.format(os.path.dirname(inspect.getfile(_version)), _variables.MIGRATIONS_FOLDER_NAME)
-    print(migrations_path)
     cur.execute(SET_SEARCH_PATH.format(_variables.PGPM_SCHEMA_NAME))
     cur.execute("SELECT {0}._find_schema('{1}', '{2}')"
                 .format(_variables.PGPM_SCHEMA_NAME, _variables.PGPM_SCHEMA_NAME, 'x'))
-    if os.path.isdir(migrations_path):
-        for subdir, dirs, files in os.walk(migrations_path):
-            for file_info in files:
-                # migration_script = io.open(os.path.join(subdir, file_info), 'r', -1, 'utf-8-sig').read()
-                pass
+    pgpm_v_ext = tuple(cur.fetchone()[0][1:-1].split(','))
 
-    a = cur.fetchone()[0]
+    return pgpm_v_ext[1], pgpm_v_ext[2], pgpm_v_ext[3]
+
+
+def _migrate_pgpm_version(cur, conn, connection_string, migrate_or_leave):
+    """
+    Enact migration script from one version of pgpm to another (newer)
+    :param cur:
+    :param migrate_or_leave: True if migrating, False if exiting
+    :return:
+    """
+    migrations_file_re = r'^(.*)-(.*).tmpl.sql$'
+    for file_info in pkg_resources.resource_listdir(__name__, 'scripts/migrations/'):
+        versions_list = re.compile(migrations_file_re, flags=re.IGNORECASE).findall(file_info)
+        version_a = version.StrictVersion(versions_list[0][0])
+        version_b = version.StrictVersion(versions_list[0][1])
+        version_pgpm_db = version.StrictVersion(_version.__version__)
+        if (version_pgpm_db >= version_a) and (version_pgpm_db <= version_b):
+            # Python 3.x doesn't have format for byte strings so we have to convert
+            migration_script = pkg_resources.resource_string(__name__, 'scripts/migrations/{0}'.format(file_info))\
+                .decode('utf-8').format(schema_name=_variables.PGPM_SCHEMA_NAME)
+            if migrate_or_leave:
+                print(TermStyle.PREFIX_INFO + 'Running version upgrade script {0}'.format(file_info))
+                # print(TermStyle.HEADER + functions_script)
+                cur.execute(migration_script)
+                print(TermStyle.PREFIX_INFO + 'Successfully finished running version upgrade script {0}'
+                      .format(file_info))
+            else:
+                print('\n' + TermStyle.PREFIX_ERROR + '{0} schema version is outdated. Please run '
+                                                      'pgpm install --upgrade first.'
+                      .format(_variables.PGPM_SCHEMA_NAME))
+                close_db_conn(cur, conn, connection_string)
+                sys.exit(1)
 
 
 def main():
     arguments = docopt(__doc__, version=_version.__version__)
     if arguments['install']:
-        install_manager(arguments['<connection_string>'])
+        install_manager(arguments)
     elif arguments['deploy']:
         deployment_manager(arguments)
     else:

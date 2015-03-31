@@ -86,8 +86,7 @@ class Version(object):
             if not version_match:
                 raise ValueError("invalid version number '%s'" % version_string)
 
-            (self.major, self.minor, self.patch, self.pre, self.metadata) = \
-                version_match.group(1, 2, 4, 5, 6)
+            (self.major, self.minor, self.patch, self.pre, self.metadata) = version_match.group(1, 2, 4, 5, 6)
         elif version_type == VersionTypes.semver:
             pass  # TODO: implement
         else:
