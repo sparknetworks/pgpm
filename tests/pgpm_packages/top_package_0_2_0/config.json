@@ -1,0 +1,8 @@
+{
+    "description"       : "Test schema to test pgpm",
+    "name"              : "top_package",
+    "class"             : "postgres_sql",
+    "subclass"          : "versioned",
+    "version"           : "00_02_00",
+    "functions_path"    : "."
+}

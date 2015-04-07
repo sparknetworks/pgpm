@@ -157,11 +157,12 @@ def collect_scripts_from_files(script_paths, files_deployment, is_package=False)
                     for subdir, dirs, files in os.walk(script_path):
                         # print(subdir, dirs)  # uncomment for debugging
                         for file_info in files:
-                            script_files_count += 1
-                            script += io.open(os.path.join(subdir, file_info), 'r', -1, 'utf-8-sig').read()
-                            script += '\n'
-                            print(TermStyle.PREFIX_INFO_IMPORTANT + TermStyle.BOLD_ON +
-                                  '{0}'.format(os.path.join(subdir, file_info)) + TermStyle.RESET)
+                            if file_info != _variables.CONFIG_FILE_NAME:
+                                script_files_count += 1
+                                script += io.open(os.path.join(subdir, file_info), 'r', -1, 'utf-8-sig').read()
+                                script += '\n'
+                                print(TermStyle.PREFIX_INFO_IMPORTANT + TermStyle.BOLD_ON +
+                                      '{0}'.format(os.path.join(subdir, file_info)) + TermStyle.RESET)
     return script, script_files_count
 
 
