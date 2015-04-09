@@ -546,7 +546,7 @@ def _get_pgpm_installed_v(cur):
                 .format(_variables.PGPM_SCHEMA_NAME, _variables.PGPM_SCHEMA_NAME, 'x'))
     pgpm_v_ext = tuple(cur.fetchone()[0][1:-1].split(','))
 
-    return pgpm_v_ext[1], pgpm_v_ext[2], pgpm_v_ext[3]
+    return pgpm_v_ext[2], pgpm_v_ext[3], pgpm_v_ext[4]
 
 
 def _migrate_pgpm_version(cur, conn, connection_string, migrate_or_leave):

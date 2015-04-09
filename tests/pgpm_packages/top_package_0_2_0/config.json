@@ -4,5 +4,6 @@
     "class"             : "postgres_sql",
     "subclass"          : "versioned",
     "version"           : "00_02_00",
-    "functions_path"    : "."
+    "functions_path"    : ".",
+    "users"             : [ "edarling" ]
 }

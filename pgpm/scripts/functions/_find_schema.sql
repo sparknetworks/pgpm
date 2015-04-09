@@ -17,7 +17,8 @@ $BODY$
 -- Package name must comply with naming conventions of postgres, exist as schema and be trackable by pgpm in order to satisfy dependency
 --
 -- @returns
--- Record containing schema name and exact version or exception if not found
+-- Record containing schema name and exact version or exception if not found in the following format:
+-- pkg_name TEXT, pkg_v_major INTEGER, pkg_v_minor INTEGER, pkg_v_patch INTEGER
 ---
 DECLARE
     c_re_version TEXT = '^(<=|>=|<|>{0,2})(\d*|x*)_?(\d*|x*)_?(\d*|x*)';
@@ -60,7 +61,7 @@ BEGIN
 
     CASE l_v_matches[1]
         WHEN '=', '' THEN
-            SELECT DISTINCT pkg_name, pkg_v_major, pkg_v_minor, pkg_v_patch
+            SELECT DISTINCT pkg_id, pkg_name, pkg_v_major, pkg_v_minor, pkg_v_patch
             FROM packages
             WHERE pkg_name = p_schema_name
                   AND pkg_v_major = l_v_major
@@ -68,7 +69,7 @@ BEGIN
                   AND pkg_v_patch = l_v_patch
             INTO return_value;
         WHEN '<' THEN
-            SELECT DISTINCT pkg_name, pkg_v_major, pkg_v_minor, pkg_v_patch
+            SELECT DISTINCT pkg_id, pkg_name, pkg_v_major, pkg_v_minor, pkg_v_patch
             FROM packages
             WHERE pkg_name = p_schema_name
                   AND (pkg_v_major < l_v_major
@@ -79,7 +80,7 @@ BEGIN
                            AND pkg_v_patch < l_v_patch))
             INTO return_value;
         WHEN '>' THEN
-            SELECT DISTINCT pkg_name, pkg_v_major, pkg_v_minor, pkg_v_patch
+            SELECT DISTINCT pkg_id, pkg_name, pkg_v_major, pkg_v_minor, pkg_v_patch
             FROM packages
             WHERE pkg_name = p_schema_name
                   AND (pkg_v_major > l_v_major
@@ -90,7 +91,7 @@ BEGIN
                            AND pkg_v_patch > l_v_patch))
             INTO return_value;
         WHEN '<=' THEN
-            SELECT DISTINCT pkg_name, pkg_v_major, pkg_v_minor, pkg_v_patch
+            SELECT DISTINCT pkg_id, pkg_name, pkg_v_major, pkg_v_minor, pkg_v_patch
             FROM packages
             WHERE pkg_name = p_schema_name
                   AND (pkg_v_major <= l_v_major
@@ -101,7 +102,7 @@ BEGIN
                            AND pkg_v_patch <= l_v_patch))
             INTO return_value;
         WHEN '>=' THEN
-            SELECT DISTINCT pkg_name, pkg_v_major, pkg_v_minor, pkg_v_patch
+            SELECT DISTINCT pkg_id, pkg_name, pkg_v_major, pkg_v_minor, pkg_v_patch
             FROM packages
             WHERE pkg_name = p_schema_name
                   AND (pkg_v_major >= l_v_major

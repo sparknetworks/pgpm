@@ -1,6 +1,7 @@
 DO
 $$BEGIN
     CREATE SCHEMA {schema_name};
+    GRANT USAGE ON SCHEMA {schema_name} TO public;
     COMMENT ON SCHEMA {schema_name} IS
         'Schema containing all information about postgres packages (name, version, dependencies, etc.)
          and utility functions';
