@@ -252,8 +252,20 @@ def resolve_dependencies(cur, dependencies):
     """
     Function checks if dependant packages are installed in DB
     """
-    # TODO: finish function
-    # for k, v in dependencies.items():
+    list_of_deps_ids = []
+    _list_of_deps_unresolved = []
+    _is_deps_resolved = True
+    for k, v in dependencies.items():
+        cur.execute(SET_SEARCH_PATH.format(_variables.PGPM_SCHEMA_NAME))
+        cur.execute("SELECT {0}._find_schema('{1}', '{2}')"
+                    .format(_variables.PGPM_SCHEMA_NAME, k, v))
+        pgpm_v_ext = tuple(cur.fetchone()[0][1:-1].split(','))
+        list_of_deps_ids.append(pgpm_v_ext[1])
+        if not pgpm_v_ext[2]:
+            _is_deps_resolved = False
+            _list_of_deps_unresolved.append("{0}: {1}".format(k, v))
+
+    return _is_deps_resolved, list_of_deps_ids, _list_of_deps_unresolved
 
 
 def install_manager(arguments):
@@ -382,9 +394,17 @@ def deployment_manager(arguments):
         close_db_conn(cur, conn, arguments['<connection_string>'])
         sys.exit(1)
 
-
     # Resolve dependencies
-    # TODO: Implement resolve_dependencies
+    list_of_deps_ids = []
+    if hasattr(config_obj, 'dependencies'):
+        _is_deps_resolved, list_of_deps_ids, _list_of_unresolved_deps = resolve_dependencies(cur, config_obj.dependencies)
+        if not _is_deps_resolved:
+            print('\n' + TermStyle.PREFIX_ERROR + 'There are unresolved dependencies. '
+                                                  'Deploy the following package(s) and try again:')
+            for unresolved_pkg in _list_of_unresolved_deps:
+                print('\n' + TermStyle.PREFIX_INFO_IMPORTANT + '{0}'.format(unresolved_pkg))
+            close_db_conn(cur, conn, arguments['<connection_string>'])
+            sys.exit(1)
 
     # Prepare and execute preamble
     _deployment_script_preamble = pkgutil.get_data('pgpm', 'scripts/deploy_prepare_config.sql')
@@ -452,7 +472,8 @@ def deployment_manager(arguments):
                           config_obj.version.pre,
                           config_obj.version.metadata,
                           config_obj.description,
-                          config_obj.license])
+                          config_obj.license,
+                          list_of_deps_ids])
             print(TermStyle.PREFIX_INFO + 'Schema {0} was renamed to {1}. Meta info was added to {2} schema'
                   .format(schema_name, _old_schema_name, _variables.PGPM_SCHEMA_NAME))
             create_db_schema(cur, schema_name, user_roles, owner_role)

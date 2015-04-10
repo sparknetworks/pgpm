@@ -5,5 +5,8 @@
     "subclass"          : "versioned",
     "version"           : "00_01_00",
     "functions_path"    : ".",
-    "users"             : [ "edarling" ]
+    "users"             : [ "public" ],
+    "dependencies"      : {
+        "low_package" : ">0_3_0"
+    }
 }

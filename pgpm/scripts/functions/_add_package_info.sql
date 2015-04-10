@@ -8,7 +8,8 @@ CREATE OR REPLACE FUNCTION _add_package_info(p_pkg_name TEXT,
                                              p_pkg_v_metadata TEXT DEFAULT NULL,
                                              p_pkg_description TEXT DEFAULT '',
                                              p_pkg_license TEXT DEFAULT NULL,
-                                             p_pkg_vcs_ref TEXT DEFAULT NULL)
+                                             p_pkg_vcs_ref TEXT DEFAULT NULL,
+                                             p_pkg_deps_ids INTEGER[] DEFAULT '{}')
     RETURNS INTEGER AS
 $BODY$
 ---
@@ -41,6 +42,9 @@ $BODY$
 --
 -- @param p_pkg_license
 -- package license name/text
+--
+-- @param p_pkg_deps_ids
+-- IDs of dependent schemas
 --
 -- @param p_pkg_vcs_ref
 -- vcs reference to track the code

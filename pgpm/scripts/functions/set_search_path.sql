@@ -21,9 +21,10 @@ $BODY$
 ---
 DECLARE
     l_search_path TEXT;
+    l_listen_text TEXT;
     l_pkg_version_wrapped RECORD;
     l_pkg_version RECORD;
-    l_linked_packages SETOF RECORD;
+--    l_linked_packages SETOF RECORD;
     l_linked_packages_array TEXT ARRAY;
 
     return_value json;
@@ -33,11 +34,14 @@ BEGIN
     SELECT _find_schema(p_schema_name, p_v_req) AS version INTO l_pkg_version_wrapped;
     l_pkg_version := l_pkg_version_wrapped.version;
 
-    SELECT pkg_id, pkg_name, pkg_v_major, pkg_v_minor, pkg_v_patch
-        WHERE pkg_id = pkg_link_core_id
+--    SELECT pkg_id, pkg_name, pkg_v_major, pkg_v_minor, pkg_v_patch
+--        WHERE pkg_id = pkg_link_core_id
+
+    l_listen_text := 'deployment_events' || '$$' || l_pkg_version.pkg_name;
+    EXECUTE 'LISTEN ' || l_listen_text;
 
     l_search_path := l_pkg_version.pkg_name || '_' || l_pkg_version.pkg_v_major::text || '_' || l_pkg_version.pkg_v_minor::text || '_' || l_pkg_version.pkg_v_patch::text;
-    SET search_path TO l_search_path, public;
+    PERFORM set_config('search_path', l_search_path || ', public', false);
 
     return_value := row_to_json(l_pkg_version);
     RETURN return_value;
