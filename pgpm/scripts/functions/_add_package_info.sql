@@ -51,6 +51,7 @@ $BODY$
 ---
 DECLARE
     l_existing_pkg_id INTEGER;
+    l_pkg_dep_id INTEGER;
 
 	  return_value INTEGER;
 BEGIN
@@ -86,6 +87,14 @@ BEGIN
     END IF;
 
     IF FOUND THEN -- Case 1:
+        DELETE FROM package_dependencies
+            WHERE pkg_link_core_id = l_existing_pkg_id;
+
+        FOREACH l_pkg_dep_id IN ARRAY p_pkg_deps_ids
+        LOOP
+            INSERT INTO package_dependencies VALUES (l_existing_pkg_id, l_pkg_dep_id);
+        END LOOP;
+
         INSERT INTO deployment_events (dpl_ev_pkg_id)
             VALUES (l_existing_pkg_id);
     ELSE -- Case 2 and 3:
@@ -117,7 +126,13 @@ BEGIN
             pkg_id
         INTO return_value;
 
-        INSERT INTO deployment_events DEFAULT VALUES;
+        FOREACH l_pkg_dep_id IN ARRAY p_pkg_deps_ids
+        LOOP
+            INSERT INTO package_dependencies VALUES (return_value, l_pkg_dep_id);
+        END LOOP;
+
+        INSERT INTO deployment_events (dpl_ev_pkg_id)
+            VALUES (return_value);
     END IF;
 
     -- Notify external channels of successful deployment event

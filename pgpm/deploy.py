@@ -260,7 +260,7 @@ def resolve_dependencies(cur, dependencies):
         cur.execute("SELECT {0}._find_schema('{1}', '{2}')"
                     .format(_variables.PGPM_SCHEMA_NAME, k, v))
         pgpm_v_ext = tuple(cur.fetchone()[0][1:-1].split(','))
-        list_of_deps_ids.append(pgpm_v_ext[1])
+        list_of_deps_ids.append(int(pgpm_v_ext[0]))
         if not pgpm_v_ext[2]:
             _is_deps_resolved = False
             _list_of_deps_unresolved.append("{0}: {1}".format(k, v))
@@ -547,7 +547,8 @@ def deployment_manager(arguments):
                   config_obj.version.pre,
                   config_obj.version.metadata,
                   config_obj.description,
-                  config_obj.license])
+                  config_obj.license,
+                  list_of_deps_ids])
     print(TermStyle.PREFIX_INFO + 'Meta info about deployment was added to schema {0}'
           .format(_variables.PGPM_SCHEMA_NAME))
 
