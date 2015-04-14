@@ -485,20 +485,14 @@ def deployment_manager(arguments):
 
     # Reordering and executing types
     if types_files_count > 0:
-        if arguments['--file']:
-            print(TermStyle.PREFIX_ERROR +
-                  'Deploying types definition scripts in existing schema without dropping it first '
-                  'is not support yet. Skipping')
-            sys.exit(1)
-        else:
-            type_ordered_scripts, type_unordered_scripts = reorder_types(types_script)
-            # uncomment for debug
-            # print(TermStyle.BOLD_ON + TermStyle.FONT_WHITE + '\n'.join(type_ordered_scripts))
-            if type_ordered_scripts:
-                cur.execute('\n'.join(type_ordered_scripts))
-            if type_unordered_scripts:
-                cur.execute('\n'.join(type_unordered_scripts))
-            print(TermStyle.PREFIX_INFO + 'Types loaded to schema {0}'.format(schema_name))
+        type_ordered_scripts, type_unordered_scripts = reorder_types(types_script)
+        # uncomment for debug
+        # print(TermStyle.BOLD_ON + TermStyle.FONT_WHITE + '\n'.join(type_ordered_scripts))
+        if type_ordered_scripts:
+            cur.execute('\n'.join(type_ordered_scripts))
+        if type_unordered_scripts:
+            cur.execute('\n'.join(type_unordered_scripts))
+        print(TermStyle.PREFIX_INFO + 'Types loaded to schema {0}'.format(schema_name))
     else:
         print(TermStyle.PREFIX_INFO + 'No type scripts to deploy')
 
