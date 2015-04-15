@@ -202,7 +202,7 @@ def reorder_types(types_script):
         if len(_type_statement_parsed) > 0:  # can be empty parsed object so need to check
             # we need only type declarations to be ordered
             if _type_statement_parsed[0].get_type() == 'CREATE':
-                _type_body_r = r'\bcreate\s+\btype\s+\b(\w+\.\w+|\w+)\b'
+                _type_body_r = r'\bcreate\s+\b(?:type|domain)\s+\b(\w+\.\w+|\w+)\b'
                 _type_name = re.compile(_type_body_r, flags=re.IGNORECASE).findall(_type_statement)[0]
                 _type_statements_dict[str(_type_name)] = \
                     {'script': _type_statement, 'deps': []}
