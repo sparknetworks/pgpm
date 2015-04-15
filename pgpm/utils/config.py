@@ -49,6 +49,7 @@ class Version(object):
     patch = 0
     pre = None
     metadata = None
+    raw = ''
 
     def __init__(self, version_string, version_type=VersionTypes.postgres):
         """
@@ -58,6 +59,7 @@ class Version(object):
         :return: tuple with major, minor, patch, pre and metadata
         """
 
+        self.raw = version_string
         if version_type == VersionTypes.postgres:
             version_r = r'^(?P<major>\d+)_(?P<minor>\d+)_(?P<patch>\d+)'
             version_list = re.compile(version_r, flags=re.IGNORECASE).findall(version_string)

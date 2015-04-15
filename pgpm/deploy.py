@@ -260,8 +260,11 @@ def resolve_dependencies(cur, dependencies):
         cur.execute("SELECT {0}._find_schema('{1}', '{2}')"
                     .format(_variables.PGPM_SCHEMA_NAME, k, v))
         pgpm_v_ext = tuple(cur.fetchone()[0][1:-1].split(','))
-        list_of_deps_ids.append(int(pgpm_v_ext[0]))
-        if not pgpm_v_ext[2]:
+        try:
+            list_of_deps_ids.append(int(pgpm_v_ext[0]))
+        except:
+            pass
+        if not pgpm_v_ext[0]:
             _is_deps_resolved = False
             _list_of_deps_unresolved.append("{0}: {1}".format(k, v))
 
@@ -362,7 +365,8 @@ def deployment_manager(arguments):
         user_roles = config_obj.user_roles
 
     print(TermStyle.PREFIX_INFO + 'Configuration of project {0} of version {1} loaded successfully.'
-          .format(config_obj.name, config_obj.version.to_string()))
+          # .format(config_obj.name, config_obj.version.to_string()))
+          .format(config_obj.name, config_obj.version.raw))  # TODO: change to to_string once discussed
 
     # Get scripts
     types_script, types_files_count = get_scripts("types_path", config_data, files_deployment, "types")
@@ -397,7 +401,8 @@ def deployment_manager(arguments):
     # Resolve dependencies
     list_of_deps_ids = []
     if hasattr(config_obj, 'dependencies'):
-        _is_deps_resolved, list_of_deps_ids, _list_of_unresolved_deps = resolve_dependencies(cur, config_obj.dependencies)
+        _is_deps_resolved, list_of_deps_ids, _list_of_unresolved_deps = \
+            resolve_dependencies(cur, config_obj.dependencies)
         if not _is_deps_resolved:
             print('\n' + TermStyle.PREFIX_ERROR + 'There are unresolved dependencies. '
                                                   'Deploy the following package(s) and try again:')
@@ -415,7 +420,8 @@ def deployment_manager(arguments):
     # Get schema name from project configuration
     schema_name = ''
     if config_obj.subclass == 'versioned':
-        schema_name = '{0}_{1}'.format(config_obj.name, config_obj.version.to_string())
+        schema_name = '{0}_{1}'.format(config_obj.name, config_obj.version.raw)
+
         print(TermStyle.PREFIX_INFO + 'Schema {0} will be updated'.format(schema_name))
     elif config_obj.subclass == 'basic':
         schema_name = '{0}'.format(config_obj.name)
