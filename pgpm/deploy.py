@@ -8,7 +8,7 @@ Copyright (c) Affinitas GmbH
 Usage:
   pgpm deploy <connection_string> [-m | --mode <mode>]
                 [-o | --owner <owner_role>] [-u | --user <user_role>...]
-                [-f[p] <file_name>...] [--add-config <config_file_path>]
+                [-f <file_name>...] [--add-config <config_file_path>]
                 [--full-path]
   pgpm install <connection_string> [--update]
   pgpm uninstall <connection_string>
@@ -22,10 +22,11 @@ Arguments:
 Options:
   -h --help                 Show this screen.
   -v --version              Show version.
-  -f, --file                Use it if you want to deploy only specific files (functions, types, etc).
+  -f <file_name>..., --file <file_name>...
+                            Use it if you want to deploy only specific files (functions, types, etc).
                             In that case these files if exist will be overridden.
                             Should be followed by the list of names of files to deploy.
-  -p, --full-path           Specify full relative path and not just file name
+  --full-path               By file deployment will take <file_name> as full relative path and only as file name
   -o <owner_role>, --owner <owner_role>
                             Role to which schema owner will be changed. User connecting to DB
                             needs to be a superuser. If omitted, user running the script
@@ -130,15 +131,18 @@ def collect_scripts_from_files(script_paths, files_deployment, is_package=False,
         if not isinstance(script_paths, list):
             script_paths = [script_paths]
         if files_deployment:  # if specific script to be deployed, only find them
-            for list_file_name in files_deployment:
-                if os.path.isfile(list_file_name):
-                    for i in range(len(script_paths)):
-                        if script_paths[i] in list_file_name:
-                            script_files_count += 1
-                            script += io.open(list_file_name, 'r', -1, 'utf-8-sig').read()
-                            script += '\n'
-                            print(TermStyle.PREFIX_INFO_IMPORTANT + TermStyle.BOLD_ON +
-                                  '{0}'.format(list_file_name) + TermStyle.RESET)
+            if is_full_path:
+                pass
+            else:
+                for list_file_name in files_deployment:
+                    if os.path.isfile(list_file_name):
+                        for i in range(len(script_paths)):
+                            if script_paths[i] in list_file_name:
+                                script_files_count += 1
+                                script += io.open(list_file_name, 'r', -1, 'utf-8-sig').read()
+                                script += '\n'
+                                print(TermStyle.PREFIX_INFO_IMPORTANT + TermStyle.BOLD_ON +
+                                      '{0}'.format(list_file_name) + TermStyle.RESET)
             else:
                 print(TermStyle.PREFIX_WARNING + 'File {0} does not exist, please specify a correct path'
                       .format(list_file_name))
