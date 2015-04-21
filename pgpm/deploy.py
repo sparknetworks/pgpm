@@ -132,7 +132,16 @@ def collect_scripts_from_files(script_paths, files_deployment, is_package=False,
             script_paths = [script_paths]
         if files_deployment:  # if specific script to be deployed, only find them
             if is_full_path:
-                pass
+                for script_path in script_paths:
+                    for subdir, dirs, files in os.walk(script_path):
+                        # print(subdir, dirs)  # uncomment for debugging
+                        for file_info in files:
+                            if file_info != _variables.CONFIG_FILE_NAME:
+                                script_files_count += 1
+                                script += io.open(os.path.join(subdir, file_info), 'r', -1, 'utf-8-sig').read()
+                                script += '\n'
+                                print(TermStyle.PREFIX_INFO_IMPORTANT + TermStyle.BOLD_ON +
+                                      '{0}'.format(os.path.join(subdir, file_info)) + TermStyle.RESET)
             else:
                 for list_file_name in files_deployment:
                     if os.path.isfile(list_file_name):
@@ -143,9 +152,9 @@ def collect_scripts_from_files(script_paths, files_deployment, is_package=False,
                                 script += '\n'
                                 print(TermStyle.PREFIX_INFO_IMPORTANT + TermStyle.BOLD_ON +
                                       '{0}'.format(list_file_name) + TermStyle.RESET)
-            else:
-                print(TermStyle.PREFIX_WARNING + 'File {0} does not exist, please specify a correct path'
-                      .format(list_file_name))
+                    else:
+                        print(TermStyle.PREFIX_WARNING + 'File {0} does not exist, please specify a correct path'
+                              .format(list_file_name))
         else:
             if is_package:
                 for script_path in script_paths:
