@@ -8,7 +8,8 @@ Copyright (c) Affinitas GmbH
 Usage:
   pgpm deploy <connection_string> [-m | --mode <mode>]
                 [-o | --owner <owner_role>] [-u | --user <user_role>...]
-                [-f | --file <file_name>...] [--add-config <config_file_path>]
+                [-f[p] <file_name>...] [--add-config <config_file_path>]
+                [--full-path]
   pgpm install <connection_string> [--update]
   pgpm uninstall <connection_string>
   pgpm -h | --help
@@ -21,10 +22,10 @@ Arguments:
 Options:
   -h --help                 Show this screen.
   -v --version              Show version.
-  -f <file_name>..., --file <file_name>...
-                            Use it if you want to deploy only specific files (functions, types, etc).
+  -f, --file                Use it if you want to deploy only specific files (functions, types, etc).
                             In that case these files if exist will be overridden.
                             Should be followed by the list of names of files to deploy.
+  -p, --full-path           Specify full relative path and not just file name
   -o <owner_role>, --owner <owner_role>
                             Role to which schema owner will be changed. User connecting to DB
                             needs to be a superuser. If omitted, user running the script
@@ -119,7 +120,7 @@ def find_whole_word(w):
     return re.compile(r'\b({0})\b'.format(w), flags=re.IGNORECASE).search
 
 
-def collect_scripts_from_files(script_paths, files_deployment, is_package=False):
+def collect_scripts_from_files(script_paths, files_deployment, is_package=False, is_full_path=False):
     """
     Collects postgres scripts from source files
     """
@@ -166,7 +167,7 @@ def collect_scripts_from_files(script_paths, files_deployment, is_package=False)
     return script, script_files_count
 
 
-def get_scripts(path_parameter, config_data, files_deployment, script_type):
+def get_scripts(path_parameter, config_data, files_deployment, script_type, is_full_path=False):
     """
     Gets scripts from specified folders
     """
@@ -177,7 +178,7 @@ def get_scripts(path_parameter, config_data, files_deployment, script_type):
         path_value = None
 
     print(TermStyle.PREFIX_INFO + 'Getting scripts with {0} definitions'.format(script_type))
-    script, files_count = collect_scripts_from_files(path_value, files_deployment)
+    script, files_count = collect_scripts_from_files(path_value, files_deployment, False, is_full_path)
     if path_value:
         if files_count == 0:
             print(TermStyle.PREFIX_WARNING + 'No {0} definitions were found in {1} folder'.format(script_type, path_value))
@@ -309,7 +310,7 @@ def install_manager(arguments):
         cur.execute(_install_script.format(schema_name=_variables.PGPM_SCHEMA_NAME))
 
     # get pgpm functions
-    script, files_count = collect_scripts_from_files('scripts/functions', False, True)
+    script, files_count = collect_scripts_from_files('scripts/functions', False, True, True)
 
     # Executing pgpm functions
     if files_count > 0:
@@ -344,6 +345,7 @@ def deployment_manager(arguments):
     else:
         owner_role = ''
     files_deployment = arguments['--file']  # if specific script to be deployed, only find them
+    is_full_path = arguments['--full-path']
 
     # Load project configuration file
     print('\n' + TermStyle.PREFIX_INFO + 'Loading project configuration...')
@@ -369,12 +371,14 @@ def deployment_manager(arguments):
           .format(config_obj.name, config_obj.version.raw))  # TODO: change to to_string once discussed
 
     # Get scripts
-    types_script, types_files_count = get_scripts("types_path", config_data, files_deployment, "types")
+    types_script, types_files_count = get_scripts("types_path", config_data, files_deployment, "types", is_full_path)
     functions_script, functions_files_count = get_scripts("functions_path", config_data, files_deployment,
-                                                          "functions")
-    views_script, views_files_count = get_scripts("views_path", config_data, files_deployment, "views")
-    tables_script, tables_files_count = get_scripts("tables_path", config_data, files_deployment, "tables")
-    triggers_script, triggers_files_count = get_scripts("triggers_path", config_data, files_deployment, "triggers")
+                                                          "functions", is_full_path)
+    views_script, views_files_count = get_scripts("views_path", config_data, files_deployment, "views", is_full_path)
+    tables_script, tables_files_count = get_scripts("tables_path", config_data, files_deployment, "tables",
+                                                    is_full_path)
+    triggers_script, triggers_files_count = get_scripts("triggers_path", config_data, files_deployment, "triggers",
+                                                        is_full_path)
 
     # Connect to DB
     conn, cur = connect_db(arguments['<connection_string>'])
