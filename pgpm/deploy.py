@@ -57,7 +57,7 @@ import io
 import pkgutil
 import pkg_resources
 
-from pgpm.utils import config
+from pgpm.utils import config, vcs
 
 from pgpm import _version, _variables
 from pgpm.utils.term_out_ui import TermStyle
@@ -132,17 +132,6 @@ def collect_scripts_from_files(script_paths, files_deployment, is_package=False,
             script_paths = [script_paths]
         if files_deployment:  # if specific script to be deployed, only find them
             if is_full_path:
-                for script_path in script_paths:
-                    for subdir, dirs, files in os.walk(script_path):
-                        # print(subdir, dirs)  # uncomment for debugging
-                        for file_info in files:
-                            if file_info != _variables.CONFIG_FILE_NAME:
-                                script_files_count += 1
-                                script += io.open(os.path.join(subdir, file_info), 'r', -1, 'utf-8-sig').read()
-                                script += '\n'
-                                print(TermStyle.PREFIX_INFO_IMPORTANT + TermStyle.BOLD_ON +
-                                      '{0}'.format(os.path.join(subdir, file_info)) + TermStyle.RESET)
-            else:
                 for list_file_name in files_deployment:
                     if os.path.isfile(list_file_name):
                         for i in range(len(script_paths)):
@@ -155,6 +144,20 @@ def collect_scripts_from_files(script_paths, files_deployment, is_package=False,
                     else:
                         print(TermStyle.PREFIX_WARNING + 'File {0} does not exist, please specify a correct path'
                               .format(list_file_name))
+            else:
+                for script_path in script_paths:
+                    for subdir, dirs, files in os.walk(script_path):
+                        # print(subdir, dirs)  # uncomment for debugging
+                        for file_info in files:
+                            for list_file_name in files_deployment:
+                                # if subdir in files_deployment:
+                                #     if file_info == list_file_name
+                                if file_info == list_file_name:
+                                    script_files_count += 1
+                                    script += io.open(os.path.join(subdir, file_info), 'r', -1, 'utf-8-sig').read()
+                                    script += '\n'
+                                    print(TermStyle.PREFIX_INFO_IMPORTANT + TermStyle.BOLD_ON +
+                                          '{0}'.format(os.path.join(subdir, file_info)) + TermStyle.RESET)
         else:
             if is_package:
                 for script_path in script_paths:
@@ -373,6 +376,8 @@ def deployment_manager(arguments):
         add_config_json.close()
     config_obj = config.SchemaConfiguration(config_data)
 
+    # Check if in git repo
+    
     # Check if owner role and user roles are to be defined with config files
     if not owner_role and config_obj.owner_role:
         owner_role = config_obj.owner_role
