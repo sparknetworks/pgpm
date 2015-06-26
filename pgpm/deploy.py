@@ -214,6 +214,7 @@ def reorder_types(types_script):
     # TODO: move up to classes
     _type_statements_dict = {}  # dictionary that store statements with type and order.
     type_unordered_scripts = []  # scripts to execute without order
+    type_drop_scripts = []  # drop scripts to execute first
     for _type_statement in _type_statements:
         _type_statement_parsed = sqlparse.parse(_type_statement)
         if len(_type_statement_parsed) > 0:  # can be empty parsed object so need to check
@@ -223,6 +224,8 @@ def reorder_types(types_script):
                 _type_name = re.compile(_type_body_r, flags=re.IGNORECASE).findall(_type_statement)[0]
                 _type_statements_dict[str(_type_name)] = \
                     {'script': _type_statement, 'deps': []}
+            elif _type_statement_parsed[0].get_type() == 'DROP':
+                type_drop_scripts.append(_type_statement)
             else:
                 type_unordered_scripts.append(_type_statement)
     # now let's add dependant types to dictionary with types
@@ -262,7 +265,7 @@ def reorder_types(types_script):
         for k, v in _type_statements_dict.items():
             if v['order'] == -1:
                 _deps_unresolved = True
-    return type_ordered_scripts, type_unordered_scripts
+    return type_drop_scripts, type_ordered_scripts, type_unordered_scripts
 
 
 def resolve_dependencies(cur, dependencies):
@@ -377,7 +380,7 @@ def deployment_manager(arguments):
     config_obj = config.SchemaConfiguration(config_data)
 
     # Check if in git repo
-    
+
     # Check if owner role and user roles are to be defined with config files
     if not owner_role and config_obj.owner_role:
         owner_role = config_obj.owner_role
@@ -513,9 +516,11 @@ def deployment_manager(arguments):
 
     # Reordering and executing types
     if types_files_count > 0:
-        type_ordered_scripts, type_unordered_scripts = reorder_types(types_script)
+        type_drop_scripts, type_ordered_scripts, type_unordered_scripts = reorder_types(types_script)
         # uncomment for debug
         # print(TermStyle.BOLD_ON + TermStyle.FONT_WHITE + '\n'.join(type_ordered_scripts))
+        if type_drop_scripts:
+            cur.execute('\n'.join(type_drop_scripts))
         if type_ordered_scripts:
             cur.execute('\n'.join(type_ordered_scripts))
         if type_unordered_scripts:
