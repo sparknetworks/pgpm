@@ -9,7 +9,10 @@ CREATE OR REPLACE FUNCTION _add_package_info(p_pkg_name TEXT,
                                              p_pkg_description TEXT DEFAULT '',
                                              p_pkg_license TEXT DEFAULT NULL,
                                              p_pkg_deps_ids INTEGER[] DEFAULT '{}',
-                                             p_pkg_vcs_ref TEXT DEFAULT NULL)
+                                             p_pkg_vcs_ref TEXT DEFAULT NULL,
+                                             p_pkg_vcs_link TEXT DEFAULT NULL,
+                                             p_pkg_issue_ref TEXT DEFAULT NULL,
+                                             p_pkg_issue_link TEXT DEFAULT NULL)
     RETURNS INTEGER AS
 $BODY$
 ---
@@ -48,6 +51,15 @@ $BODY$
 --
 -- @param p_pkg_vcs_ref
 -- vcs reference to track the code
+--
+-- @param p_pkg_vcs_link
+-- repository link to track the code
+--
+-- @param p_pkg_issue_ref
+-- issue reference to track the code
+--
+-- @param p_pkg_issue_link
+-- issue tracking system link
 ---
 DECLARE
     l_existing_pkg_id INTEGER;
@@ -95,8 +107,8 @@ BEGIN
             INSERT INTO package_dependencies VALUES (l_existing_pkg_id, l_pkg_dep_id);
         END LOOP;
 
-        INSERT INTO deployment_events (dpl_ev_pkg_id)
-            VALUES (l_existing_pkg_id);
+        INSERT INTO deployment_events (dpl_ev_pkg_id, dpl_ev_vcs_ref, dpl_ev_vcs_link, dpl_ev_issue_id, dpl_ev_issue_link)
+            VALUES (l_existing_pkg_id, p_pkg_vcs_ref, p_pkg_vcs_link, p_pkg_issue_ref, p_pkg_issue_link);
     ELSE -- Case 2 and 3:
         INSERT INTO packages (
             pkg_name,
@@ -131,8 +143,9 @@ BEGIN
             INSERT INTO package_dependencies VALUES (return_value, l_pkg_dep_id);
         END LOOP;
 
-        INSERT INTO deployment_events (dpl_ev_pkg_id)
-            VALUES (return_value);
+        INSERT INTO deployment_events (dpl_ev_pkg_id, dpl_ev_vcs_ref, dpl_ev_vcs_link, dpl_ev_issue_id, dpl_ev_issue_link)
+            VALUES (return_value, p_pkg_vcs_ref, p_pkg_vcs_link, p_pkg_issue_ref, p_pkg_issue_link);
+
     END IF;
 
     -- Notify external channels of successful deployment event

@@ -10,6 +10,8 @@ Usage:
                 [-o | --owner <owner_role>] [-u | --user <user_role>...]
                 [-f <file_name>...] [--add-config <config_file_path>]
                 [--full-path] [--debug-mode]
+                [--vcs-ref <vcs_reference>] [--vcs-link <vcs_link>]
+                [--issue-ref <issue_reference>] [--issue-link <issue_link>]
   pgpm install <connection_string> [--update]
   pgpm uninstall <connection_string>
   pgpm -h | --help
@@ -48,6 +50,12 @@ Options:
                             Provides path to additional config file. Attributes of this file overwrite config.json
   --debug-mode              Debug level loggin enabled if command is present. Otherwise Info level
   --update                  Update pgpm to a newer version
+  --vcs-ref <vcs_reference> Adds vcs reference to deployments log table
+  --vcs-link <vcs_link>
+                            Adds link to repository to deployments log table
+  --issue-ref <issue_reference>
+                            Adds issue reference to deployments log table
+  --issue-link <issue_link> Adds link to issue tracking system to deployments log table
 
 """
 import logging
@@ -65,7 +73,6 @@ import pkg_resources
 from pgpm.utils import config, vcs
 
 from pgpm import _version, _variables
-from pgpm.utils.term_out_ui import TermStyle
 from docopt import docopt
 from distutils import version
 
@@ -144,14 +151,14 @@ def collect_scripts_from_files(script_paths, files_deployment, is_package=False,
                                 script_files_count += 1
                                 script += io.open(list_file_name, 'r', -1, 'utf-8-sig').read()
                                 script += '\n'
-                                logger.info('{0}'.format(list_file_name) + TermStyle.RESET)
+                                logger.info('{0}'.format(list_file_name))
                     else:
                         logger.warning('File {0} does not exist, please specify a correct path'
-                              .format(list_file_name))
+                                       .format(list_file_name))
             else:
                 for script_path in script_paths:
                     for subdir, dirs, files in os.walk(script_path):
-                        logger.debug('{0} {1}'.format(subdir,dirs))
+                        logger.debug('{0} {1}'.format(subdir, dirs))
                         for file_info in files:
                             for list_file_name in files_deployment:
                                 # if subdir in files_deployment:
@@ -160,27 +167,27 @@ def collect_scripts_from_files(script_paths, files_deployment, is_package=False,
                                     script_files_count += 1
                                     script += io.open(os.path.join(subdir, file_info), 'r', -1, 'utf-8-sig').read()
                                     script += '\n'
-                                    logger.info('{0}'.format(os.path.join(subdir, file_info)) + TermStyle.RESET)
+                                    logger.info('{0}'.format(os.path.join(subdir, file_info)))
         else:
             if is_package:
                 for script_path in script_paths:
-                    logger.debug('{0} {1}'.format(subdir,dirs))
+                    logger.debug('{0}'.format(script_path))
                     for file_info in pkg_resources.resource_listdir(__name__, script_path):
                         script_files_count += 1
                         script += pkg_resources.resource_string(__name__, '{0}/{1}'.format(script_path, file_info))\
                             .decode('utf-8')
                         script += '\n'
-                        logger.info('{0}/{1}'.format(script_path, file_info) + TermStyle.RESET)
+                        logger.info('{0}/{1}'.format(script_path, file_info))
             else:
                 for script_path in script_paths:
                     for subdir, dirs, files in os.walk(script_path):
-                        logger.debug('{0} {1}'.format(subdir,dirs))
+                        logger.debug('{0} {1}'.format(subdir, dirs))
                         for file_info in files:
                             if file_info != _variables.CONFIG_FILE_NAME:
                                 script_files_count += 1
                                 script += io.open(os.path.join(subdir, file_info), 'r', -1, 'utf-8-sig').read()
                                 script += '\n'
-                                logger.info('{0}'.format(os.path.join(subdir, file_info)) + TermStyle.RESET)
+                                logger.info('{0}'.format(os.path.join(subdir, file_info)))
     return script, script_files_count
 
 
@@ -299,7 +306,7 @@ def install_manager(arguments):
     conn, cur = connect_db(arguments['<connection_string>'])
 
     # Create schema if it doesn't exist
-    if schema_exists(cur,_variables.PGPM_SCHEMA_NAME):
+    if schema_exists(cur, _variables.PGPM_SCHEMA_NAME):
         # check installed version of _pgpm schema.
         pgpm_v_db_tuple = _get_pgpm_installed_v(cur)
         pgpm_v_db = version.StrictVersion(".".join(pgpm_v_db_tuple))
@@ -341,6 +348,8 @@ def install_manager(arguments):
     else:
         logger.info('No function scripts to deploy')
 
+    conn.commit()  # we must commit as if during installation we updated functions we need to commit before using them
+
     cur.callproc('{0}._add_package_info'.format(_variables.PGPM_SCHEMA_NAME),
                  [_variables.PGPM_SCHEMA_NAME, _variables.PGPM_SCHEMA_SUBCLASS, None,
                   _variables.PGPM_VERSION.major, _variables.PGPM_VERSION.minor, _variables.PGPM_VERSION.patch,
@@ -380,6 +389,24 @@ def deployment_manager(arguments):
     config_obj = config.SchemaConfiguration(config_data)
 
     # Check if in git repo
+    vcs_ref = None
+    vcs_link = None
+    issue_ref = None
+    issue_link = None
+    if arguments['--vcs-ref']:
+        vcs_ref = arguments['--vcs-ref']
+    else:
+        if vcs.is_git_directory():
+            vcs_ref = vcs.get_git_revision_hash()
+            logger.debug('commit reference to b deployed is {0}'.format(vcs_ref))
+        else:
+            logger.info('Folder is not a known vcs repository')
+    if arguments['--vcs-link']:
+        vcs_link = arguments['--vcs-link']
+    if arguments['--issue-ref']:
+        issue_ref = arguments['--issue-ref']
+    if arguments['--issue-link']:
+        issue_link = arguments['--issue-link']
 
     # Check if owner role and user roles are to be defined with config files
     if not owner_role and config_obj.owner_role:
@@ -388,8 +415,8 @@ def deployment_manager(arguments):
         user_roles = config_obj.user_roles
 
     logger.info('Configuration of project {0} of version {1} loaded successfully.'
-          # .format(config_obj.name, config_obj.version.to_string()))
-          .format(config_obj.name, config_obj.version.raw))  # TODO: change to to_string once discussed
+                .format(config_obj.name, config_obj.version.raw))  # TODO: change to to_string once discussed
+    # .format(config_obj.name, config_obj.version.to_string()))
 
     # Get scripts
     types_script, types_files_count = get_scripts("types_path", config_data, files_deployment, "types", is_full_path)
@@ -500,7 +527,7 @@ def deployment_manager(arguments):
                           config_obj.license,
                           list_of_deps_ids])
             logger.info('Schema {0} was renamed to {1}. Meta info was added to {2} schema'
-                  .format(schema_name, _old_schema_name, _variables.PGPM_SCHEMA_NAME))
+                        .format(schema_name, _old_schema_name, _variables.PGPM_SCHEMA_NAME))
             create_db_schema(cur, schema_name, user_roles, owner_role)
         elif arguments['--mode'][0] == 'unsafe':
             _drop_schema_script = "DROP SCHEMA {0} CASCADE;\n".format(schema_name)
@@ -577,9 +604,13 @@ def deployment_manager(arguments):
                   config_obj.version.metadata,
                   config_obj.description,
                   config_obj.license,
-                  list_of_deps_ids])
+                  list_of_deps_ids,
+                  vcs_ref,
+                  vcs_link,
+                  issue_ref,
+                  issue_link])
     logger.info('Meta info about deployment was added to schema {0}'
-          .format(_variables.PGPM_SCHEMA_NAME))
+                .format(_variables.PGPM_SCHEMA_NAME))
 
     # Commit transaction
     conn.commit()
@@ -612,7 +643,8 @@ def _migrate_pgpm_version(cur, conn, connection_string, migrate_or_leave):
         versions_list = re.compile(migrations_file_re, flags=re.IGNORECASE).findall(file_info)
         version_a = version.StrictVersion(versions_list[0][0])
         version_b = version.StrictVersion(versions_list[0][1])
-        version_pgpm_db = version.StrictVersion(_version.__version__)
+        version_pgpm_db_tuple = _get_pgpm_installed_v(cur)
+        version_pgpm_db = version.StrictVersion(".".join(version_pgpm_db_tuple))
         if (version_pgpm_db >= version_a) and (version_pgpm_db <= version_b):
             # Python 3.x doesn't have format for byte strings so we have to convert
             migration_script = pkg_resources.resource_string(__name__, 'scripts/migrations/{0}'.format(file_info))\
@@ -622,11 +654,10 @@ def _migrate_pgpm_version(cur, conn, connection_string, migrate_or_leave):
                 logger.debug(migration_script)
                 cur.execute(migration_script)
                 logger.info('Successfully finished running version upgrade script {0}'
-                      .format(file_info))
+                            .format(file_info))
             else:
-                logger.error('{0} schema version is outdated. Please run '
-                                                      'pgpm install --upgrade first.'
-                      .format(_variables.PGPM_SCHEMA_NAME))
+                logger.error('{0} schema version is outdated. Please run pgpm install --upgrade first.'
+                             .format(_variables.PGPM_SCHEMA_NAME))
                 close_db_conn(cur, conn, connection_string)
                 sys.exit(1)
 
