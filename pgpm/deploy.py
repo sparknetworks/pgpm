@@ -9,7 +9,7 @@ Usage:
   pgpm deploy <connection_string> [-m | --mode <mode>]
                 [-o | --owner <owner_role>] [-u | --user <user_role>...]
                 [-f <file_name>...] [--add-config <config_file_path>]
-                [--full-path]
+                [--full-path] [--debug-mode]
   pgpm install <connection_string> [--update]
   pgpm uninstall <connection_string>
   pgpm -h | --help
@@ -41,11 +41,16 @@ Options:
                             and deploy new schema with old name
                             * unsafe. allows cascade deleting of schema if it exists and adding new one
                             [default: safe]
+                            * overwrite. Will run scripts overwriting existing ones.
+                            User have to make sure that overwriting is possible.
+                            E.g. if type exists, rewriting should be preceeded with dropping it first manually
   --add-config <config_file_path>
                             Provides path to additional config file. Attributes of this file overwrite config.json
+  --debug-mode              Debug level loggin enabled if command is present. Otherwise Info level
   --update                  Update pgpm to a newer version
 
 """
+import logging
 
 import os
 import psycopg2
@@ -66,15 +71,17 @@ from distutils import version
 
 SET_SEARCH_PATH = "SET search_path TO {0}, public;"
 
+# getting logging
+logger = logging.getLogger(__name__)
 
 def connect_db(connection_string):
     """
     Connect to DB or exit on exception
     """
-    print(TermStyle.PREFIX_INFO + 'Connecting to databases for deployment...')
+    logger.info('Connecting to databases for deployment...')
     conn = psycopg2.connect(connection_string)
     cur = conn.cursor()
-    print(TermStyle.PREFIX_INFO + 'Connected to {0}'.format(connection_string))
+    logger.info('Connected to {0}'.format(connection_string))
 
     return conn, cur
 
@@ -83,10 +90,10 @@ def close_db_conn(cur, conn, conn_string):
     """
     Close DB connection and cursor
     """
-    print(TermStyle.PREFIX_INFO + 'Closing connection to {0}...'.format(conn_string))
+    logger.info('Closing connection to {0}...'.format(conn_string))
     cur.close()
     conn.close()
-    print(TermStyle.PREFIX_INFO + 'Connection to {0} closed.'.format(conn_string))
+    logger.info('Connection to {0} closed.'.format(conn_string))
 
 
 def schema_exists(cur, schema_name):
@@ -109,9 +116,7 @@ def create_db_schema(cur, schema_name, users, owner):
         _create_schema_script += "ALTER SCHEMA {0} OWNER TO {1};\n".format(schema_name, owner)
     _create_schema_script += SET_SEARCH_PATH.format(schema_name)
     cur.execute(_create_schema_script)
-    print(TermStyle.PREFIX_INFO +
-          'Schema {0} was created and search_path was changed.'
-          .format(schema_name))
+    logger.info('Schema {0} was created and search_path was changed.'.format(schema_name))
 
 
 def find_whole_word(w):
@@ -139,15 +144,14 @@ def collect_scripts_from_files(script_paths, files_deployment, is_package=False,
                                 script_files_count += 1
                                 script += io.open(list_file_name, 'r', -1, 'utf-8-sig').read()
                                 script += '\n'
-                                print(TermStyle.PREFIX_INFO_IMPORTANT + TermStyle.BOLD_ON +
-                                      '{0}'.format(list_file_name) + TermStyle.RESET)
+                                logger.info('{0}'.format(list_file_name) + TermStyle.RESET)
                     else:
-                        print(TermStyle.PREFIX_WARNING + 'File {0} does not exist, please specify a correct path'
+                        logger.warning('File {0} does not exist, please specify a correct path'
                               .format(list_file_name))
             else:
                 for script_path in script_paths:
                     for subdir, dirs, files in os.walk(script_path):
-                        # print(subdir, dirs)  # uncomment for debugging
+                        logger.debug('{0} {1}'.format(subdir,dirs))
                         for file_info in files:
                             for list_file_name in files_deployment:
                                 # if subdir in files_deployment:
@@ -156,30 +160,27 @@ def collect_scripts_from_files(script_paths, files_deployment, is_package=False,
                                     script_files_count += 1
                                     script += io.open(os.path.join(subdir, file_info), 'r', -1, 'utf-8-sig').read()
                                     script += '\n'
-                                    print(TermStyle.PREFIX_INFO_IMPORTANT + TermStyle.BOLD_ON +
-                                          '{0}'.format(os.path.join(subdir, file_info)) + TermStyle.RESET)
+                                    logger.info('{0}'.format(os.path.join(subdir, file_info)) + TermStyle.RESET)
         else:
             if is_package:
                 for script_path in script_paths:
-                    # print(subdir, dirs)  # uncomment for debugging
+                    logger.debug('{0} {1}'.format(subdir,dirs))
                     for file_info in pkg_resources.resource_listdir(__name__, script_path):
                         script_files_count += 1
                         script += pkg_resources.resource_string(__name__, '{0}/{1}'.format(script_path, file_info))\
                             .decode('utf-8')
                         script += '\n'
-                        print(TermStyle.PREFIX_INFO_IMPORTANT + TermStyle.BOLD_ON +
-                              '{0}/{1}'.format(script_path, file_info) + TermStyle.RESET)
+                        logger.info('{0}/{1}'.format(script_path, file_info) + TermStyle.RESET)
             else:
                 for script_path in script_paths:
                     for subdir, dirs, files in os.walk(script_path):
-                        # print(subdir, dirs)  # uncomment for debugging
+                        logger.debug('{0} {1}'.format(subdir,dirs))
                         for file_info in files:
                             if file_info != _variables.CONFIG_FILE_NAME:
                                 script_files_count += 1
                                 script += io.open(os.path.join(subdir, file_info), 'r', -1, 'utf-8-sig').read()
                                 script += '\n'
-                                print(TermStyle.PREFIX_INFO_IMPORTANT + TermStyle.BOLD_ON +
-                                      '{0}'.format(os.path.join(subdir, file_info)) + TermStyle.RESET)
+                                logger.info('{0}'.format(os.path.join(subdir, file_info)) + TermStyle.RESET)
     return script, script_files_count
 
 
@@ -193,13 +194,13 @@ def get_scripts(path_parameter, config_data, files_deployment, script_type, is_f
     else:
         path_value = None
 
-    print(TermStyle.PREFIX_INFO + 'Getting scripts with {0} definitions'.format(script_type))
+    logger.info('Getting scripts with {0} definitions'.format(script_type))
     script, files_count = collect_scripts_from_files(path_value, files_deployment, False, is_full_path)
     if path_value:
         if files_count == 0:
-            print(TermStyle.PREFIX_WARNING + 'No {0} definitions were found in {1} folder'.format(script_type, path_value))
+            logger.warning('No {0} definitions were found in {1} folder'.format(script_type, path_value))
     else:
-        print(TermStyle.PREFIX_INFO + 'No {0} folder was specified'.format(script_type))
+        logger.info('No {0} folder was specified'.format(script_type))
 
     return script, files_count
 
@@ -208,8 +209,8 @@ def reorder_types(types_script):
     """
     Takes type scripts and reorders them to avoid Type doesn't exist exception
     """
-    print(TermStyle.PREFIX_INFO + 'Running types definitions scripts')
-    print(TermStyle.PREFIX_INFO + 'Reordering types definitions scripts to avoid "type does not exist" exceptions')
+    logger.info('Running types definitions scripts')
+    logger.info('Reordering types definitions scripts to avoid "type does not exist" exceptions')
     _type_statements = sqlparse.split(types_script)
     # TODO: move up to classes
     _type_statements_dict = {}  # dictionary that store statements with type and order.
@@ -309,23 +310,23 @@ def install_manager(arguments):
             else:
                 _migrate_pgpm_version(cur, conn, arguments['<connection_string>'], False)
         elif pgpm_v_script < pgpm_v_db:
-            print('\n' + TermStyle.PREFIX_ERROR + 'Deployment script\'s version is lower than the version of {0} schema'
-                                                  'installed in DB. Update pgpm script first.'
-                  .format(_variables.PGPM_SCHEMA_NAME))
+            logger.error('Deployment script\'s version is lower than the version of {0} schema '
+                         'installed in DB. Update pgpm script first.'.format(_variables.PGPM_SCHEMA_NAME))
+            close_db_conn(cur, conn, arguments['<connection_string>'])
+            sys.exit(1)
         else:
-            print(TermStyle.PREFIX_ERROR +
-                  'Can\'t install pgpm as schema {0} already exists'.format(_variables.PGPM_SCHEMA_NAME))
+            logger.error('Can\'t install pgpm as schema {0} already exists'.format(_variables.PGPM_SCHEMA_NAME))
             close_db_conn(cur, conn, arguments['<connection_string>'])
             sys.exit(1)
     else:
         # Prepare and execute preamble
         _deployment_script_preamble = pkgutil.get_data('pgpm', 'scripts/deploy_prepare_config.sql')
-        print(TermStyle.PREFIX_INFO + 'Executing a preamble to install statement')
+        logger.info('Executing a preamble to install statement')
         cur.execute(_deployment_script_preamble)
 
         # Python 3.x doesn't have format for byte strings so we have to convert
         _install_script = pkgutil.get_data('pgpm', 'scripts/install.tmpl.sql').decode('utf-8')
-        print(TermStyle.PREFIX_INFO + 'Installing package manager')
+        logger.info('Installing package manager')
         cur.execute(_install_script.format(schema_name=_variables.PGPM_SCHEMA_NAME))
 
     # get pgpm functions
@@ -333,12 +334,12 @@ def install_manager(arguments):
 
     # Executing pgpm functions
     if files_count > 0:
-        print(TermStyle.PREFIX_INFO + 'Running functions definitions scripts')
-        # print(TermStyle.HEADER + functions_script)
+        logger.info('Running functions definitions scripts')
+        logger.debug(script)
         cur.execute(script)
-        print(TermStyle.PREFIX_INFO + 'Functions loaded to schema {0}'.format(_variables.PGPM_SCHEMA_NAME))
+        logger.info('Functions loaded to schema {0}'.format(_variables.PGPM_SCHEMA_NAME))
     else:
-        print(TermStyle.PREFIX_INFO + 'No function scripts to deploy')
+        logger.info('No function scripts to deploy')
 
     cur.callproc('{0}._add_package_info'.format(_variables.PGPM_SCHEMA_NAME),
                  [_variables.PGPM_SCHEMA_NAME, _variables.PGPM_SCHEMA_SUBCLASS, None,
@@ -367,13 +368,12 @@ def deployment_manager(arguments):
     is_full_path = arguments['--full-path']
 
     # Load project configuration file
-    print('\n' + TermStyle.PREFIX_INFO + 'Loading project configuration...')
+    logger.info('Loading project configuration...')
     config_json = open(_variables.CONFIG_FILE_NAME)
     config_data = json.load(config_json)
     config_json.close()
     if arguments['--add-config']:
-        print('\n' + TermStyle.PREFIX_INFO + 'Adding additional configuration file {0}'.
-              format(arguments['--add-config']))
+        logger.info('Adding additional configuration file {0}'.format(arguments['--add-config']))
         add_config_json = open(arguments['--add-config'])
         config_data = dict(list(config_data.items()) + list(json.load(add_config_json).items()))
         add_config_json.close()
@@ -387,7 +387,7 @@ def deployment_manager(arguments):
     if not user_roles and config_obj.user_roles:
         user_roles = config_obj.user_roles
 
-    print(TermStyle.PREFIX_INFO + 'Configuration of project {0} of version {1} loaded successfully.'
+    logger.info('Configuration of project {0} of version {1} loaded successfully.'
           # .format(config_obj.name, config_obj.version.to_string()))
           .format(config_obj.name, config_obj.version.raw))  # TODO: change to to_string once discussed
 
@@ -396,17 +396,17 @@ def deployment_manager(arguments):
     functions_script, functions_files_count = get_scripts("functions_path", config_data, files_deployment,
                                                           "functions", is_full_path)
     views_script, views_files_count = get_scripts("views_path", config_data, files_deployment, "views", is_full_path)
-    tables_script, tables_files_count = get_scripts("tables_path", config_data, files_deployment, "tables",
-                                                    is_full_path)
     triggers_script, triggers_files_count = get_scripts("triggers_path", config_data, files_deployment, "triggers",
                                                         is_full_path)
+    tables_script, tables_files_count = get_scripts("tables_path", config_data, files_deployment, "tables",
+                                                    is_full_path)
 
     # Connect to DB
     conn, cur = connect_db(arguments['<connection_string>'])
     # Check if DB is pgpm enabled
     if not schema_exists(cur, _variables.PGPM_SCHEMA_NAME):
-        print('\n' + TermStyle.PREFIX_ERROR + 'Can\'t deploy schemas to DB where pgpm was not installed. '
-                                              'First install pgpm by running pgpm install')
+        logger.error('Can\'t deploy schemas to DB where pgpm was not installed. '
+                     'First install pgpm by running pgpm install')
         close_db_conn(cur, conn, arguments['<connection_string>'])
         sys.exit(1)
 
@@ -417,9 +417,8 @@ def deployment_manager(arguments):
     if pgpm_v_script > pgpm_v_db:
         _migrate_pgpm_version(cur, conn, arguments['<connection_string>'], False)
     elif pgpm_v_script < pgpm_v_db:
-        print('\n' + TermStyle.PREFIX_ERROR + 'Deployment script\'s version is lower than the version of {0} schema'
-                                              'installed in DB. Update pgpm script first.'
-              .format(_variables.PGPM_SCHEMA_NAME))
+        logger.error('Deployment script\'s version is lower than the version of {0} schema '
+                     'installed in DB. Update pgpm script first.'.format(_variables.PGPM_SCHEMA_NAME))
         close_db_conn(cur, conn, arguments['<connection_string>'])
         sys.exit(1)
 
@@ -429,17 +428,16 @@ def deployment_manager(arguments):
         _is_deps_resolved, list_of_deps_ids, _list_of_unresolved_deps = \
             resolve_dependencies(cur, config_obj.dependencies)
         if not _is_deps_resolved:
-            print('\n' + TermStyle.PREFIX_ERROR + 'There are unresolved dependencies. '
-                                                  'Deploy the following package(s) and try again:')
+            logger.error('There are unresolved dependencies. Deploy the following package(s) and try again:')
             for unresolved_pkg in _list_of_unresolved_deps:
-                print('\n' + TermStyle.PREFIX_INFO_IMPORTANT + '{0}'.format(unresolved_pkg))
+                logger.error('{0}'.format(unresolved_pkg))
             close_db_conn(cur, conn, arguments['<connection_string>'])
             sys.exit(1)
 
     # Prepare and execute preamble
     _deployment_script_preamble = pkgutil.get_data('pgpm', 'scripts/deploy_prepare_config.sql')
-    print(TermStyle.PREFIX_INFO + 'Executing a preamble to deployment statement')
-    # print(_deployment_script_preamble)
+    logger.info('Executing a preamble to deployment statement')
+    logger.debug(_deployment_script_preamble)
     cur.execute(_deployment_script_preamble)
 
     # Get schema name from project configuration
@@ -447,33 +445,30 @@ def deployment_manager(arguments):
     if config_obj.subclass == 'versioned':
         schema_name = '{0}_{1}'.format(config_obj.name, config_obj.version.raw)
 
-        print(TermStyle.PREFIX_INFO + 'Schema {0} will be updated'.format(schema_name))
+        logger.info('Schema {0} will be updated'.format(schema_name))
     elif config_obj.subclass == 'basic':
         schema_name = '{0}'.format(config_obj.name)
         if not arguments['--file']:
-            print(TermStyle.PREFIX_INFO + 'Schema {0} will be created/replaced'.format(schema_name))
+            logger.info('Schema {0} will be created/replaced'.format(schema_name))
         else:
-            print(TermStyle.PREFIX_INFO + 'Schema {0} will be updated'.format(schema_name))
+            logger.info('Schema {0} will be updated'.format(schema_name))
 
     # Create schema or update it if exists (if not in production mode) and set search path
     if arguments['--file']:  # if specific scripts to be deployed
         if not schema_exists(cur, schema_name):
-            print(TermStyle.PREFIX_ERROR + 'Can\'t deploy scripts to schema {0}. Schema doesn\'t exist in database'
-                  .format(schema_name))
+            logger.error('Can\'t deploy scripts to schema {0}. Schema doesn\'t exist in database'.format(schema_name))
             close_db_conn(cur, conn, arguments.get('<connection_string>'))
             sys.exit(1)
         else:
             _set_search_path_schema_script = SET_SEARCH_PATH.format(schema_name)
             cur.execute(_set_search_path_schema_script)
-            print(TermStyle.PREFIX_INFO +
-                  'Search_path was changed to schema {0}'.format(schema_name))
+            logger.info('Search_path was changed to schema {0}'.format(schema_name))
     else:
         if not schema_exists(cur, schema_name):
             create_db_schema(cur, schema_name, user_roles, owner_role)
         elif arguments['--mode'][0] == 'safe':
-            print(TermStyle.PREFIX_ERROR +
-                  'Schema already exists. It won\'t be overriden in safe mode. Rerun your script without '
-                  '"-m moderate" or "-m unsafe" flags')
+            logger.error('Schema already exists. It won\'t be overriden in safe mode. '
+                         'Rerun your script without "-m moderate" or "-m unsafe" flags')
             close_db_conn(cur, conn, arguments.get('<connection_string>'))
             sys.exit(1)
         elif arguments['--mode'][0] == 'moderate':
@@ -486,9 +481,8 @@ def deployment_manager(arguments):
                 if _old_schema_exists:
                     _old_schema_rev += 1
             _old_schema_name = schema_name + '_' + str(_old_schema_rev)
-            print(TermStyle.PREFIX_INFO +
-                  'Schema already exists. It will be renamed to {0} in moderate mode. Renaming...'
-                  .format(_old_schema_name))
+            logger.info('Schema already exists. It will be renamed to {0} in moderate mode. Renaming...'
+                        .format(_old_schema_name))
             _rename_schema_script = "ALTER SCHEMA {0} RENAME TO {1};\n".format(schema_name, _old_schema_name)
             cur.execute(_rename_schema_script)
             # Add metadata to pgpm schema
@@ -505,62 +499,70 @@ def deployment_manager(arguments):
                           config_obj.description,
                           config_obj.license,
                           list_of_deps_ids])
-            print(TermStyle.PREFIX_INFO + 'Schema {0} was renamed to {1}. Meta info was added to {2} schema'
+            logger.info('Schema {0} was renamed to {1}. Meta info was added to {2} schema'
                   .format(schema_name, _old_schema_name, _variables.PGPM_SCHEMA_NAME))
             create_db_schema(cur, schema_name, user_roles, owner_role)
-        else:
+        elif arguments['--mode'][0] == 'unsafe':
             _drop_schema_script = "DROP SCHEMA {0} CASCADE;\n".format(schema_name)
             cur.execute(_drop_schema_script)
-            print(TermStyle.PREFIX_INFO + 'Dropping old schema {0}'.format(schema_name))
+            logger.info('Dropping old schema {0}'.format(schema_name))
             create_db_schema(cur, schema_name, user_roles, owner_role)
+
+    # Executing DDL scripts
+    # if ddl_files_count > 0:
+    #     logger.info('Running DDL scripts')
+    #     # print(TermStyle.HEADER + functions_script)
+    #     cur.execute(ddl_script)
+    #     logger.info('DDL executed for schema {0}'.format(schema_name))
+    # else:
+    #     logger.info('No DDL scripts to execute')
 
     # Reordering and executing types
     if types_files_count > 0:
         type_drop_scripts, type_ordered_scripts, type_unordered_scripts = reorder_types(types_script)
-        # uncomment for debug
-        # print(TermStyle.BOLD_ON + TermStyle.FONT_WHITE + '\n'.join(type_ordered_scripts))
+        logger.debug(type_ordered_scripts)
         if type_drop_scripts:
             cur.execute('\n'.join(type_drop_scripts))
         if type_ordered_scripts:
             cur.execute('\n'.join(type_ordered_scripts))
         if type_unordered_scripts:
             cur.execute('\n'.join(type_unordered_scripts))
-        print(TermStyle.PREFIX_INFO + 'Types loaded to schema {0}'.format(schema_name))
+        logger.info('Types loaded to schema {0}'.format(schema_name))
     else:
-        print(TermStyle.PREFIX_INFO + 'No type scripts to deploy')
+        logger.info('No type scripts to deploy')
 
     # Executing functions
     if functions_files_count > 0:
-        print(TermStyle.PREFIX_INFO + 'Running functions definitions scripts')
-        # print(TermStyle.HEADER + functions_script)
+        logger.info('Running functions definitions scripts')
+        logger.debug(functions_script)
         cur.execute(functions_script)
-        print(TermStyle.PREFIX_INFO + 'Functions loaded to schema {0}'.format(schema_name))
+        logger.info('Functions loaded to schema {0}'.format(schema_name))
     else:
-        print(TermStyle.PREFIX_INFO + 'No function scripts to deploy')
+        logger.info('No function scripts to deploy')
 
     # Executing views
     if views_files_count > 0:
-        print(TermStyle.PREFIX_INFO + 'Running views definitions scripts')
-        # print(TermStyle.HEADER + views_script)
+        logger.info('Running views definitions scripts')
+        logger.debug(views_script)
         cur.execute(views_script)
-        print(TermStyle.PREFIX_INFO + 'Views loaded to schema {0}'.format(schema_name))
+        logger.info('Views loaded to schema {0}'.format(schema_name))
     else:
-        print(TermStyle.PREFIX_INFO + 'No view scripts to deploy')
+        logger.info('No view scripts to deploy')
 
     # Executing tables
     if tables_files_count > 0:
-        print(TermStyle.PREFIX_WARNING + 'Support for DDL or data updates is not implemented yet')
+        logger.warning('Support for DDL or data updates is not implemented yet')
     else:
-        print(TermStyle.PREFIX_INFO + 'No DDL or data update scripts to deploy')
+        logger.info('No DDL or data update scripts to deploy')
 
     # Executing triggers
     if triggers_files_count > 0:
-        print(TermStyle.PREFIX_INFO + 'Running views definitions scripts')
-        # print(TermStyle.HEADER + triggers_script)
+        logger.info('Running views definitions scripts')
+        logger.debug(triggers_script)
         cur.execute(triggers_script)
-        print(TermStyle.PREFIX_INFO + 'Views loaded to schema {0}'.format(schema_name))
+        logger.info('Views loaded to schema {0}'.format(schema_name))
     else:
-        print(TermStyle.PREFIX_INFO + 'No view scripts to deploy')
+        logger.info('No view scripts to deploy')
 
     # Add metadata to pgpm schema
     cur.execute(SET_SEARCH_PATH.format(_variables.PGPM_SCHEMA_NAME))
@@ -576,7 +578,7 @@ def deployment_manager(arguments):
                   config_obj.description,
                   config_obj.license,
                   list_of_deps_ids])
-    print(TermStyle.PREFIX_INFO + 'Meta info about deployment was added to schema {0}'
+    logger.info('Meta info about deployment was added to schema {0}'
           .format(_variables.PGPM_SCHEMA_NAME))
 
     # Commit transaction
@@ -616,13 +618,13 @@ def _migrate_pgpm_version(cur, conn, connection_string, migrate_or_leave):
             migration_script = pkg_resources.resource_string(__name__, 'scripts/migrations/{0}'.format(file_info))\
                 .decode('utf-8').format(schema_name=_variables.PGPM_SCHEMA_NAME)
             if migrate_or_leave:
-                print(TermStyle.PREFIX_INFO + 'Running version upgrade script {0}'.format(file_info))
-                # print(TermStyle.HEADER + functions_script)
+                logger.info('Running version upgrade script {0}'.format(file_info))
+                logger.debug(migration_script)
                 cur.execute(migration_script)
-                print(TermStyle.PREFIX_INFO + 'Successfully finished running version upgrade script {0}'
+                logger.info('Successfully finished running version upgrade script {0}'
                       .format(file_info))
             else:
-                print('\n' + TermStyle.PREFIX_ERROR + '{0} schema version is outdated. Please run '
+                logger.error('{0} schema version is outdated. Please run '
                                                       'pgpm install --upgrade first.'
                       .format(_variables.PGPM_SCHEMA_NAME))
                 close_db_conn(cur, conn, connection_string)
@@ -631,6 +633,19 @@ def _migrate_pgpm_version(cur, conn, connection_string, migrate_or_leave):
 
 def main():
     arguments = docopt(__doc__, version=_version.__version__)
+
+    # setting logging
+    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    if arguments['--debug-mode']:
+        logger_level = logging.DEBUG
+    else:
+        logger_level = logging.INFO
+    logger.setLevel(logger_level)
+    handler = logging.StreamHandler()
+    handler.setLevel(logger_level)
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
+
     if arguments['install']:
         install_manager(arguments)
     elif arguments['deploy']:
