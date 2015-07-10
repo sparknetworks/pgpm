@@ -307,6 +307,16 @@ def install_manager(arguments):
 
     # Create schema if it doesn't exist
     if schema_exists(cur, _variables.PGPM_SCHEMA_NAME):
+        # immediately install find schema function
+        _find_schema_f = pkgutil.get_data('pgpm', 'scripts/functions/_find_schema.sql')
+        logger.debug('Update/add _find_schema function')
+        logger.debug(_find_schema_f)
+        cur.execute(SET_SEARCH_PATH.format(_variables.PGPM_SCHEMA_NAME))
+        cur.execute(_find_schema_f)
+        logger.info('Function {0}._find_schema updated/added'.format(_variables.PGPM_SCHEMA_NAME))
+
+        conn.commit()
+
         # check installed version of _pgpm schema.
         pgpm_v_db_tuple = _get_pgpm_installed_v(cur)
         pgpm_v_db = version.StrictVersion(".".join(pgpm_v_db_tuple))

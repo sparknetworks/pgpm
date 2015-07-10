@@ -23,6 +23,7 @@ $BODY$
 DECLARE
     c_re_version TEXT = '^(<=|>=|<|>{0,2})(\d*|x*)_?(\d*|x*)_?(\d*|x*)';
     l_v_matches TEXT[];
+
     l_v_major INTEGER;
     l_v_minor INTEGER;
     l_v_patch INTEGER;
@@ -32,7 +33,7 @@ BEGIN
 
     SELECT regexp_matches(p_v_req, c_re_version, 'gi') INTO l_v_matches;
 
-    if l_v_matches[2] ~* '^x+|^$' THEN
+    IF l_v_matches[2] ~* '^x+|^$' THEN
         SELECT max(pkg_v_major)
         FROM packages
         WHERE pkg_name = p_schema_name
@@ -41,19 +42,22 @@ BEGIN
         l_v_major := l_v_matches[2]::integer;
     END IF;
 
-    if l_v_matches[3] ~* '^x+|^$' THEN
+    IF l_v_matches[3] ~* '^x+|^$' THEN
         SELECT max(pkg_v_minor)
         FROM packages
         WHERE pkg_name = p_schema_name
+              AND pkg_v_major = l_v_major
         INTO l_v_minor;
     ELSE
         l_v_minor := l_v_matches[3]::integer;
     END IF;
 
-    if l_v_matches[4] ~* '^x+|^$' THEN
+    IF l_v_matches[4] ~* '^x+|^$' THEN
         SELECT max(pkg_v_patch)
         FROM packages
         WHERE pkg_name = p_schema_name
+              AND pkg_v_major = l_v_major
+              AND pkg_v_minor = l_v_minor
         INTO l_v_patch;
     ELSE
         l_v_patch := l_v_matches[4]::integer;
