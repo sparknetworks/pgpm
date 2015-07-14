@@ -305,15 +305,20 @@ def install_manager(arguments):
     """
     conn, cur = connect_db(arguments['<connection_string>'])
 
+    # get pgpm functions
+    script, files_count = collect_scripts_from_files('scripts/functions', False, True, True)
+
     # Create schema if it doesn't exist
     if schema_exists(cur, _variables.PGPM_SCHEMA_NAME):
-        # immediately install find schema function
-        _find_schema_f = pkgutil.get_data('pgpm', 'scripts/functions/_find_schema.sql')
-        logger.debug('Update/add _find_schema function')
-        logger.debug(_find_schema_f)
-        cur.execute(SET_SEARCH_PATH.format(_variables.PGPM_SCHEMA_NAME))
-        cur.execute(_find_schema_f)
-        logger.info('Function {0}._find_schema updated/added'.format(_variables.PGPM_SCHEMA_NAME))
+        # Executing pgpm functions
+        if files_count > 0:
+            logger.info('Running functions definitions scripts')
+            logger.debug(script)
+            cur.execute(SET_SEARCH_PATH.format(_variables.PGPM_SCHEMA_NAME))
+            cur.execute(script)
+            logger.info('Functions loaded to schema {0}'.format(_variables.PGPM_SCHEMA_NAME))
+        else:
+            logger.info('No function scripts to deploy')
 
         conn.commit()
 
@@ -346,20 +351,19 @@ def install_manager(arguments):
         logger.info('Installing package manager')
         cur.execute(_install_script.format(schema_name=_variables.PGPM_SCHEMA_NAME))
 
-    # get pgpm functions
-    script, files_count = collect_scripts_from_files('scripts/functions', False, True, True)
+        # Executing pgpm functions
+        if files_count > 0:
+            logger.info('Running functions definitions scripts')
+            logger.debug(script)
+            cur.execute(SET_SEARCH_PATH.format(_variables.PGPM_SCHEMA_NAME))
+            cur.execute(script)
+            logger.info('Functions loaded to schema {0}'.format(_variables.PGPM_SCHEMA_NAME))
+        else:
+            logger.info('No function scripts to deploy')
 
-    # Executing pgpm functions
-    if files_count > 0:
-        logger.info('Running functions definitions scripts')
-        logger.debug(script)
-        cur.execute(script)
-        logger.info('Functions loaded to schema {0}'.format(_variables.PGPM_SCHEMA_NAME))
-    else:
-        logger.info('No function scripts to deploy')
+        conn.commit()
 
-    conn.commit()  # we must commit as if during installation we updated functions we need to commit before using them
-
+    cur.execute(SET_SEARCH_PATH.format(_variables.PGPM_SCHEMA_NAME))
     cur.callproc('{0}._add_package_info'.format(_variables.PGPM_SCHEMA_NAME),
                  [_variables.PGPM_SCHEMA_NAME, _variables.PGPM_SCHEMA_SUBCLASS, None,
                   _variables.PGPM_VERSION.major, _variables.PGPM_VERSION.minor, _variables.PGPM_VERSION.patch,
@@ -408,7 +412,7 @@ def deployment_manager(arguments):
     else:
         if vcs.is_git_directory():
             vcs_ref = vcs.get_git_revision_hash()
-            logger.debug('commit reference to b deployed is {0}'.format(vcs_ref))
+            logger.debug('commit reference to be deployed is {0}'.format(vcs_ref))
         else:
             logger.info('Folder is not a known vcs repository')
     if arguments['--vcs-link']:
@@ -535,7 +539,11 @@ def deployment_manager(arguments):
                           config_obj.version.metadata,
                           config_obj.description,
                           config_obj.license,
-                          list_of_deps_ids])
+                          list_of_deps_ids,
+                          vcs_ref,
+                          vcs_link,
+                          issue_ref,
+                          issue_link])
             logger.info('Schema {0} was renamed to {1}. Meta info was added to {2} schema'
                         .format(schema_name, _old_schema_name, _variables.PGPM_SCHEMA_NAME))
             create_db_schema(cur, schema_name, user_roles, owner_role)
@@ -663,6 +671,11 @@ def _migrate_pgpm_version(cur, conn, connection_string, migrate_or_leave):
                 logger.info('Running version upgrade script {0}'.format(file_info))
                 logger.debug(migration_script)
                 cur.execute(migration_script)
+                conn.commit()
+                cur.execute(SET_SEARCH_PATH.format(_variables.PGPM_SCHEMA_NAME))
+                cur.callproc('{0}._add_migration_info'.format(_variables.PGPM_SCHEMA_NAME),
+                             [versions_list[0][0], versions_list[0][1]])
+                conn.commit()
                 logger.info('Successfully finished running version upgrade script {0}'
                             .format(file_info))
             else:
