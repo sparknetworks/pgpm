@@ -1,6 +1,8 @@
 /*
-    Migration script from version 0.1.0 to 0.1.1 (or higher if tool doesn't find other migration scripts)
+    Migration script from version 0.7.0 to 0.1.3 (or higher if tool doesn't find other migration scripts)
  */
+DROP FUNCTION IF EXISTS {schema_name}._add_package_info(TEXT, TEXT, INTEGER, INTEGER, INTEGER, INTEGER, TEXT, TEXT, TEXT, TEXT, INTEGER[], TEXT);
+
 CREATE TABLE {schema_name}.migrations_log
 (
     m_id SERIAL NOT NULL,
