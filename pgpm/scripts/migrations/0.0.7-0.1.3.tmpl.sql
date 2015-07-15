@@ -3,7 +3,7 @@
  */
 DROP FUNCTION IF EXISTS {schema_name}._add_package_info(TEXT, TEXT, INTEGER, INTEGER, INTEGER, INTEGER, TEXT, TEXT, TEXT, TEXT, INTEGER[], TEXT);
 
-CREATE TABLE {schema_name}.migrations_log
+CREATE TABLE IF NOT EXISTS {schema_name}.migrations_log
 (
     m_id SERIAL NOT NULL,
     m_low_v TEXT,
@@ -12,9 +12,12 @@ CREATE TABLE {schema_name}.migrations_log
     CONSTRAINT migrations_log_pkey PRIMARY KEY (m_id)
 );
 INSERT INTO {schema_name}.migrations_log (m_low_v, m_high_v)
-    VALUES ('0.0.1', '0.0.6');
-INSERT INTO {schema_name}.migrations_log (m_low_v, m_high_v)
-    VALUES ('0.0.7', '0.1.0');
+SELECT '0.0.1', '0.0.6'
+WHERE
+    NOT EXISTS (
+        SELECT m_low_v, m_high_v FROM {schema_name}.migrations_log
+        WHERE m_low_v = '0.0.1' AND m_high_v = '0.0.6'
+    );
 COMMENT ON TABLE {schema_name}.migrations_log IS
     'Logs each migration of pgpm to newer version. TODO: add statuses';
 
