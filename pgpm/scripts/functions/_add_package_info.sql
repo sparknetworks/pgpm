@@ -1,6 +1,5 @@
-CREATE OR REPLACE FUNCTION _add_package_info(p_pkg_name TEXT,
+CREATE OR REPLACE FUNCTION _upsert_package_info(p_pkg_name TEXT,
                                              p_pkg_subclass_name TEXT,
-                                             p_pkg_old_rev INTEGER,
                                              p_pkg_v_major INTEGER,
                                              p_pkg_v_minor INTEGER DEFAULT 0,
                                              p_pkg_v_patch INTEGER DEFAULT 0,
@@ -24,9 +23,6 @@ $BODY$
 --
 -- @param p_pkg_subclass_name
 -- package type: either version (with version suffix at the end of the name) or basic (without)
---
--- @param p_pkg_old_rev
--- Revision name of package. Used in moderate form. When schema is renamed it is given a revision suffix from here
 --
 -- @param p_pkg_description
 -- package description
@@ -72,31 +68,16 @@ DECLARE
 BEGIN
 
     -- Case 1: unsafe mode, rewrite of the whole schema with the same version or some of the files in it
-    -- Case 2: new schema with new version
-    -- Case 3: moderate mode, adding old revision number
+    -- Case 2: new schema with new version (safe or moderate modes)
 
-    IF p_pkg_old_rev IS NULL THEN -- Case 1 and 2
-        IF p_pkg_subclass_name = 'basic' THEN
-            SELECT pkg_id INTO l_existing_pkg_id
-            FROM packages
-            WHERE pkg_name = p_pkg_name
-                AND pkg_subclass IN (SELECT pkg_sc_id
-                                     FROM package_subclasses
-                                     WHERE pkg_sc_name = p_pkg_subclass_name);
-        ELSE
-            SELECT pkg_id INTO l_existing_pkg_id
-            FROM packages
-            WHERE pkg_name = p_pkg_name
-                AND pkg_subclass IN (SELECT pkg_sc_id
-                                     FROM package_subclasses
-                                     WHERE pkg_sc_name = p_pkg_subclass_name)
-                AND pkg_v_major = p_pkg_v_major
-                AND (pkg_v_minor IS NULL OR pkg_v_minor = p_pkg_v_minor)
-                AND (pkg_v_patch IS NULL OR pkg_v_patch = p_pkg_v_patch)
-                AND (pkg_v_pre IS NULL OR pkg_v_pre = p_pkg_v_pre)
-                AND pkg_old_rev IS NULL;
-        END IF;
-    ELSE -- Case 3
+    IF p_pkg_subclass_name = 'basic' THEN
+        SELECT pkg_id INTO l_existing_pkg_id
+        FROM packages
+        WHERE pkg_name = p_pkg_name
+            AND pkg_subclass IN (SELECT pkg_sc_id
+                                 FROM package_subclasses
+                                 WHERE pkg_sc_name = p_pkg_subclass_name);
+    ELSE
         SELECT pkg_id INTO l_existing_pkg_id
         FROM packages
         WHERE pkg_name = p_pkg_name
@@ -107,7 +88,7 @@ BEGIN
             AND (pkg_v_minor IS NULL OR pkg_v_minor = p_pkg_v_minor)
             AND (pkg_v_patch IS NULL OR pkg_v_patch = p_pkg_v_patch)
             AND (pkg_v_pre IS NULL OR pkg_v_pre = p_pkg_v_pre)
-            AND (pkg_old_rev = p_pkg_old_rev);
+            AND pkg_old_rev IS NULL;
     END IF;
 
     IF FOUND THEN -- Case 1:
@@ -122,7 +103,6 @@ BEGIN
         UPDATE packages
         SET pkg_name=subquery.p_pkg_name,
             pkg_subclass=subquery.pkg_sc_id,
-            pkg_old_rev=subquery.p_pkg_old_rev,
             pkg_v_major=subquery.p_pkg_v_major,
             pkg_v_minor=subquery.p_pkg_v_minor,
             pkg_v_patch=subquery.p_pkg_v_patch,
@@ -133,7 +113,6 @@ BEGIN
         FROM (SELECT
                   p_pkg_name,
                   pkg_sc_id,
-                  p_pkg_old_rev,
                   p_pkg_v_major,
                   p_pkg_v_minor,
                   p_pkg_v_patch,
@@ -147,7 +126,7 @@ BEGIN
 
         INSERT INTO deployment_events (dpl_ev_pkg_id, dpl_ev_vcs_ref, dpl_ev_vcs_link, dpl_ev_issue_id, dpl_ev_issue_link)
             VALUES (l_existing_pkg_id, p_pkg_vcs_ref, p_pkg_vcs_link, p_pkg_issue_ref, p_pkg_issue_link);
-    ELSE -- Case 2 and 3:
+    ELSE -- Case 2:
         INSERT INTO packages (
             pkg_name,
             pkg_description,
@@ -156,7 +135,6 @@ BEGIN
             pkg_v_patch,
             pkg_v_pre,
             pkg_v_metadata,
-            pkg_old_rev,
             pkg_subclass,
             pkg_license
         )
@@ -168,7 +146,6 @@ BEGIN
             p_pkg_v_patch,
             p_pkg_v_pre,
             p_pkg_v_metadata,
-            p_pkg_old_rev,
             pkg_sc_id,
             p_pkg_license
         FROM package_subclasses WHERE pkg_sc_name = p_pkg_subclass_name

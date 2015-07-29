@@ -12,6 +12,7 @@ Usage:
                 [--full-path] [--debug-mode]
                 [--vcs-ref <vcs_reference>] [--vcs-link <vcs_link>]
                 [--issue-ref <issue_reference>] [--issue-link <issue_link>]
+  pgpm remove <connection_string> --pkg-name <schema_name> <v_major> <v_minor> <v_patch> <v_pre> [--old-rev <old_rev>]
   pgpm install <connection_string> [--update]
   pgpm uninstall <connection_string>
   pgpm -h | --help
@@ -20,6 +21,10 @@ Usage:
 Arguments:
   <connection_string>       Connection string to postgres database.
                             Can be in any format psycopg2 would understand it
+  <v_major>                 Major part of version of package
+  <v_minor>                 Minor part of version of package
+  <v_patch>                 Patch part of version of package
+  <v_pre>                   Pre part of version of package
 
 Options:
   -h --help                 Show this screen.
@@ -56,6 +61,10 @@ Options:
   --issue-ref <issue_reference>
                             Adds issue reference to deployments log table
   --issue-link <issue_link> Adds link to issue tracking system to deployments log table
+  --pkg-name <schema_name>  Package name to be removed
+  --old-rev <old_rev>       If omitted all old revisions are deleted together with current revision.
+                            If specified just the specified revision is deleted
+
 
 """
 import logging
@@ -364,8 +373,8 @@ def install_manager(arguments):
         conn.commit()
 
     cur.execute(SET_SEARCH_PATH.format(_variables.PGPM_SCHEMA_NAME))
-    cur.callproc('{0}._add_package_info'.format(_variables.PGPM_SCHEMA_NAME),
-                 [_variables.PGPM_SCHEMA_NAME, _variables.PGPM_SCHEMA_SUBCLASS, None,
+    cur.callproc('{0}._upsert_package_info'.format(_variables.PGPM_SCHEMA_NAME),
+                 [_variables.PGPM_SCHEMA_NAME, _variables.PGPM_SCHEMA_SUBCLASS,
                   _variables.PGPM_VERSION.major, _variables.PGPM_VERSION.minor, _variables.PGPM_VERSION.patch,
                   _variables.PGPM_VERSION.pre, _variables.PGPM_VERSION.metadata,
                   'Package manager for Postgres', 'MIT'])
@@ -528,22 +537,14 @@ def deployment_manager(arguments):
             cur.execute(_rename_schema_script)
             # Add metadata to pgpm schema
             cur.execute(SET_SEARCH_PATH.format(_variables.PGPM_SCHEMA_NAME))
-            cur.callproc('{0}._add_package_info'.format(_variables.PGPM_SCHEMA_NAME),
+            cur.callproc('{0}._set_revision_package'.format(_variables.PGPM_SCHEMA_NAME),
                          [config_obj.name,
                           config_obj.subclass,
                           _old_schema_rev,
                           config_obj.version.major,
                           config_obj.version.minor,
                           config_obj.version.patch,
-                          config_obj.version.pre,
-                          config_obj.version.metadata,
-                          config_obj.description,
-                          config_obj.license,
-                          list_of_deps_ids,
-                          vcs_ref,
-                          vcs_link,
-                          issue_ref,
-                          issue_link])
+                          config_obj.version.pre])
             logger.info('Schema {0} was renamed to {1}. Meta info was added to {2} schema'
                         .format(schema_name, _old_schema_name, _variables.PGPM_SCHEMA_NAME))
             create_db_schema(cur, schema_name, user_roles, owner_role)
@@ -611,10 +612,9 @@ def deployment_manager(arguments):
 
     # Add metadata to pgpm schema
     cur.execute(SET_SEARCH_PATH.format(_variables.PGPM_SCHEMA_NAME))
-    cur.callproc('{0}._add_package_info'.format(_variables.PGPM_SCHEMA_NAME),
+    cur.callproc('{0}._upsert_package_info'.format(_variables.PGPM_SCHEMA_NAME),
                  [config_obj.name,
                   config_obj.subclass,
-                  None,
                   config_obj.version.major,
                   config_obj.version.minor,
                   config_obj.version.patch,
