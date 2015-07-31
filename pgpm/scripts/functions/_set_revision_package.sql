@@ -61,8 +61,8 @@ BEGIN
         SET pkg_old_rev=p_pkg_old_rev
         WHERE packages.pkg_id=l_existing_pkg_id;
 
-        INSERT INTO deployment_events (dpl_ev_pkg_id, dpl_ev_vcs_ref, dpl_ev_vcs_link, dpl_ev_issue_id, dpl_ev_issue_link)
-            SELECT pkg_id, dpl_ev_vcs_ref, dpl_ev_vcs_link, dpl_ev_issue_id, dpl_ev_issue_link
+        INSERT INTO deployment_events (dpl_ev_pkg_id, dpl_ev_txid, dpl_ev_vcs_ref, dpl_ev_vcs_link, dpl_ev_issue_id, dpl_ev_issue_link)
+            SELECT pkg_id, txid_current(), dpl_ev_vcs_ref, dpl_ev_vcs_link, dpl_ev_issue_id, dpl_ev_issue_link
             FROM packages
             JOIN deployment_events ON dpl_ev_pkg_id=pkg_id
             WHERE pkg_id=l_existing_pkg_id AND dpl_ev_time IN (

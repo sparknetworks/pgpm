@@ -664,7 +664,7 @@ def _migrate_pgpm_version(cur, conn, connection_string, migrate_or_leave):
         versions_list = re.compile(migrations_file_re, flags=re.IGNORECASE).findall(file_info)
         version_a = version.StrictVersion(versions_list[0][0])
         version_b = version.StrictVersion(versions_list[0][1])
-        if version_pgpm_script >= version_a and version_b >= version_pgpm_db:
+        if version_pgpm_script >= version_a and version_b > version_pgpm_db:
             # Python 3.x doesn't have format for byte strings so we have to convert
             migration_script = pkg_resources.resource_string(__name__, 'scripts/migrations/{0}'.format(file_info))\
                 .decode('utf-8').format(schema_name=_variables.PGPM_SCHEMA_NAME)
