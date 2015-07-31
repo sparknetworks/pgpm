@@ -657,13 +657,14 @@ def _migrate_pgpm_version(cur, conn, connection_string, migrate_or_leave):
     :return:
     """
     migrations_file_re = r'^(.*)-(.*).tmpl.sql$'
+    version_pgpm_db_tuple = _get_pgpm_installed_v(cur)
+    version_pgpm_db = version.StrictVersion(".".join(version_pgpm_db_tuple))
+    version_pgpm_script = version.StrictVersion(_version.__version__)
     for file_info in pkg_resources.resource_listdir(__name__, 'scripts/migrations/'):
         versions_list = re.compile(migrations_file_re, flags=re.IGNORECASE).findall(file_info)
         version_a = version.StrictVersion(versions_list[0][0])
         version_b = version.StrictVersion(versions_list[0][1])
-        version_pgpm_db_tuple = _get_pgpm_installed_v(cur)
-        version_pgpm_db = version.StrictVersion(".".join(version_pgpm_db_tuple))
-        if (version_pgpm_db >= version_a) and (version_pgpm_db <= version_b):
+        if version_pgpm_script >= version_a and version_b >= version_pgpm_db:
             # Python 3.x doesn't have format for byte strings so we have to convert
             migration_script = pkg_resources.resource_string(__name__, 'scripts/migrations/{0}'.format(file_info))\
                 .decode('utf-8').format(schema_name=_variables.PGPM_SCHEMA_NAME)
