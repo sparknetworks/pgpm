@@ -58,7 +58,7 @@ setup(
     url='https://github.com/affinitas/pgpm',
     packages=['pgpm', 'pgpm.utils'],
     long_description=open('README.rst').read(),
-    install_requires=['docopt', 'psycopg2', 'sqlparse'],
+    install_requires=['docopt', 'psycopg2', 'sqlparse', 'OrderedDict'],
     classifiers=[
         'Development Status :: 3 - Alpha',
         'Environment :: Console',

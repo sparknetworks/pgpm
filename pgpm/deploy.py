@@ -56,8 +56,7 @@ Options:
   --debug-mode              Debug level loggin enabled if command is present. Otherwise Info level
   --update                  Update pgpm to a newer version
   --vcs-ref <vcs_reference> Adds vcs reference to deployments log table
-  --vcs-link <vcs_link>
-                            Adds link to repository to deployments log table
+  --vcs-link <vcs_link>     Adds link to repository to deployments log table
   --issue-ref <issue_reference>
                             Adds issue reference to deployments log table
   --issue-link <issue_link> Adds link to issue tracking system to deployments log table
@@ -78,6 +77,8 @@ import sys
 import io
 import pkgutil
 import pkg_resources
+
+from collections import OrderedDict
 
 from pgpm.utils import config, vcs
 
@@ -142,12 +143,11 @@ def find_whole_word(w):
     return re.compile(r'\b({0})\b'.format(w), flags=re.IGNORECASE).search
 
 
-def collect_scripts_from_files(script_paths, files_deployment, is_package=False, is_full_path=False):
+def collect_scripts_from_files(script_paths, files_deployment, is_package=False, is_full_path=False, sort=True):
     """
     Collects postgres scripts from source files
     """
-    script_files_count = 0
-    script = ''
+    scripts_dict = {}
     if script_paths:
         if not isinstance(script_paths, list):
             script_paths = [script_paths]
@@ -157,9 +157,7 @@ def collect_scripts_from_files(script_paths, files_deployment, is_package=False,
                     if os.path.isfile(list_file_name):
                         for i in range(len(script_paths)):
                             if script_paths[i] in list_file_name:
-                                script_files_count += 1
-                                script += io.open(list_file_name, 'r', -1, 'utf-8-sig').read()
-                                script += '\n'
+                                scripts_dict[list_file_name] = io.open(list_file_name, 'r', -1, 'utf-8-sig').read()
                                 logger.info('{0}'.format(list_file_name))
                     else:
                         logger.warning('File {0} does not exist, please specify a correct path'
@@ -170,34 +168,29 @@ def collect_scripts_from_files(script_paths, files_deployment, is_package=False,
                         logger.debug('{0} {1}'.format(subdir, dirs))
                         for file_info in files:
                             for list_file_name in files_deployment:
-                                # if subdir in files_deployment:
-                                #     if file_info == list_file_name
                                 if file_info == list_file_name:
-                                    script_files_count += 1
-                                    script += io.open(os.path.join(subdir, file_info), 'r', -1, 'utf-8-sig').read()
-                                    script += '\n'
+                                    scripts_dict[list_file_name] = io.open(os.path.join(subdir, file_info),
+                                                                           'r', -1, 'utf-8-sig').read()
                                     logger.info('{0}'.format(os.path.join(subdir, file_info)))
         else:
             if is_package:
                 for script_path in script_paths:
                     logger.debug('{0}'.format(script_path))
                     for file_info in pkg_resources.resource_listdir(__name__, script_path):
-                        script_files_count += 1
-                        script += pkg_resources.resource_string(__name__, '{0}/{1}'.format(script_path, file_info))\
-                            .decode('utf-8')
-                        script += '\n'
+                        scripts_dict[file_info] = pkg_resources.resource_string(__name__, '{0}/{1}'
+                                                                                .format(script_path, file_info)).decode('utf-8')
                         logger.info('{0}/{1}'.format(script_path, file_info))
             else:
                 for script_path in script_paths:
                     for subdir, dirs, files in os.walk(script_path):
                         logger.debug('{0} {1}'.format(subdir, dirs))
+                        files = sorted(files)
                         for file_info in files:
                             if file_info != _variables.CONFIG_FILE_NAME:
-                                script_files_count += 1
-                                script += io.open(os.path.join(subdir, file_info), 'r', -1, 'utf-8-sig').read()
-                                script += '\n'
+                                scripts_dict[file_info] = io.open(os.path.join(subdir, file_info),
+                                                                  'r', -1, 'utf-8-sig').read()
                                 logger.info('{0}'.format(os.path.join(subdir, file_info)))
-    return script, script_files_count
+    return scripts_dict
 
 
 def get_scripts(path_parameter, config_data, files_deployment, script_type, is_full_path=False):
@@ -211,14 +204,14 @@ def get_scripts(path_parameter, config_data, files_deployment, script_type, is_f
         path_value = None
 
     logger.info('Getting scripts with {0} definitions'.format(script_type))
-    script, files_count = collect_scripts_from_files(path_value, files_deployment, False, is_full_path)
+    scripts_dict = collect_scripts_from_files(path_value, files_deployment, False, is_full_path)
     if path_value:
-        if files_count == 0:
+        if len(scripts_dict) == 0:
             logger.warning('No {0} definitions were found in {1} folder'.format(script_type, path_value))
     else:
         logger.info('No {0} folder was specified'.format(script_type))
 
-    return script, files_count
+    return scripts_dict
 
 
 def reorder_types(types_script):
@@ -315,16 +308,17 @@ def install_manager(arguments):
     conn, cur = connect_db(arguments['<connection_string>'])
 
     # get pgpm functions
-    script, files_count = collect_scripts_from_files('scripts/functions', False, True, True)
+    scripts_dict = collect_scripts_from_files('scripts/functions', False, True, True)
 
     # Create schema if it doesn't exist
     if schema_exists(cur, _variables.PGPM_SCHEMA_NAME):
         # Executing pgpm functions
-        if files_count > 0:
+        if len(scripts_dict) > 0:
             logger.info('Running functions definitions scripts')
-            logger.debug(script)
+            logger.debug(scripts_dict)
             cur.execute(SET_SEARCH_PATH.format(_variables.PGPM_SCHEMA_NAME))
-            cur.execute(script)
+            for key, value in scripts_dict.items():
+                cur.execute(value)
             logger.info('Functions loaded to schema {0}'.format(_variables.PGPM_SCHEMA_NAME))
         else:
             logger.info('No function scripts to deploy')
@@ -361,11 +355,12 @@ def install_manager(arguments):
         cur.execute(_install_script.format(schema_name=_variables.PGPM_SCHEMA_NAME))
 
         # Executing pgpm functions
-        if files_count > 0:
+        if len(scripts_dict) > 0:
             logger.info('Running functions definitions scripts')
-            logger.debug(script)
+            logger.debug(scripts_dict)
             cur.execute(SET_SEARCH_PATH.format(_variables.PGPM_SCHEMA_NAME))
-            cur.execute(script)
+            for key, value in scripts_dict.items():
+                cur.execute(value)
             logger.info('Functions loaded to schema {0}'.format(_variables.PGPM_SCHEMA_NAME))
         else:
             logger.info('No function scripts to deploy')
@@ -442,13 +437,13 @@ def deployment_manager(arguments):
     # .format(config_obj.name, config_obj.version.to_string()))
 
     # Get scripts
-    types_script, types_files_count = get_scripts("types_path", config_data, files_deployment, "types", is_full_path)
-    functions_script, functions_files_count = get_scripts("functions_path", config_data, files_deployment,
+    type_scripts_dict = get_scripts("types_path", config_data, files_deployment, "types", is_full_path)
+    function_scripts_dict = get_scripts("functions_path", config_data, files_deployment,
                                                           "functions", is_full_path)
-    views_script, views_files_count = get_scripts("views_path", config_data, files_deployment, "views", is_full_path)
-    triggers_script, triggers_files_count = get_scripts("triggers_path", config_data, files_deployment, "triggers",
+    view_scripts_dict = get_scripts("views_path", config_data, files_deployment, "views", is_full_path)
+    trigger_scripts_dict = get_scripts("triggers_path", config_data, files_deployment, "triggers",
                                                         is_full_path)
-    tables_script, tables_files_count = get_scripts("tables_path", config_data, files_deployment, "tables",
+    table_scripts_dict = get_scripts("tables_path", config_data, files_deployment, "tables",
                                                     is_full_path)
 
     # Connect to DB
@@ -498,13 +493,13 @@ def deployment_manager(arguments):
         logger.info('Schema {0} will be updated'.format(schema_name))
     elif config_obj.subclass == 'basic':
         schema_name = '{0}'.format(config_obj.name)
-        if not arguments['--file']:
+        if not files_deployment:
             logger.info('Schema {0} will be created/replaced'.format(schema_name))
         else:
             logger.info('Schema {0} will be updated'.format(schema_name))
 
     # Create schema or update it if exists (if not in production mode) and set search path
-    if arguments['--file']:  # if specific scripts to be deployed
+    if files_deployment:  # if specific scripts to be deployed
         if not schema_exists(cur, schema_name):
             logger.error('Can\'t deploy scripts to schema {0}. Schema doesn\'t exist in database'.format(schema_name))
             close_db_conn(cur, conn, arguments.get('<connection_string>'))
@@ -554,17 +549,9 @@ def deployment_manager(arguments):
             logger.info('Dropping old schema {0}'.format(schema_name))
             create_db_schema(cur, schema_name, user_roles, owner_role)
 
-    # Executing DDL scripts
-    # if ddl_files_count > 0:
-    #     logger.info('Running DDL scripts')
-    #     # print(TermStyle.HEADER + functions_script)
-    #     cur.execute(ddl_script)
-    #     logger.info('DDL executed for schema {0}'.format(schema_name))
-    # else:
-    #     logger.info('No DDL scripts to execute')
-
     # Reordering and executing types
-    if types_files_count > 0:
+    if len(type_scripts_dict) > 0:
+        types_script = '\n'.join([''.join(value) for key, value in type_scripts_dict.items()])
         type_drop_scripts, type_ordered_scripts, type_unordered_scripts = reorder_types(types_script)
         logger.debug(type_ordered_scripts)
         if type_drop_scripts:
@@ -577,35 +564,49 @@ def deployment_manager(arguments):
     else:
         logger.info('No type scripts to deploy')
 
+    # Executing Table DDL scripts
+    if len(table_scripts_dict) > 0:
+        logger.info('Running Table DDL scripts')
+        for key, value in OrderedDict(sorted(table_scripts_dict.items(), key=lambda t: t[0])):
+            cur.execute(SET_SEARCH_PATH.format(_variables.PGPM_SCHEMA_NAME))
+            cur.callproc('{0}._is_table_ddl_executed'.format(_variables.PGPM_SCHEMA_NAME), key)
+            is_table_executed = cur.fetchone()[0]
+            if is_table_executed and value:
+                cur.execute(value)
+                logger.debug(value)
+        logger.info('Table DDL executed for schema {0}'.format(schema_name))
+    else:
+        logger.info('No Table DDL scripts to execute')
+
     # Executing functions
-    if functions_files_count > 0:
+    if len(function_scripts_dict) > 0:
         logger.info('Running functions definitions scripts')
-        logger.debug(functions_script)
-        cur.execute(functions_script)
+        logger.debug(function_scripts_dict)
+        for key, value in function_scripts_dict.items():
+            if value:
+                cur.execute(value)
         logger.info('Functions loaded to schema {0}'.format(schema_name))
     else:
         logger.info('No function scripts to deploy')
 
     # Executing views
-    if views_files_count > 0:
+    if len(view_scripts_dict) > 0:
         logger.info('Running views definitions scripts')
-        logger.debug(views_script)
-        cur.execute(views_script)
+        logger.debug(view_scripts_dict)
+        for key, value in view_scripts_dict.items():
+            if value:
+                cur.execute(value)
         logger.info('Views loaded to schema {0}'.format(schema_name))
     else:
         logger.info('No view scripts to deploy')
 
-    # Executing tables
-    if tables_files_count > 0:
-        logger.warning('Support for DDL or data updates is not implemented yet')
-    else:
-        logger.info('No DDL or data update scripts to deploy')
-
     # Executing triggers
-    if triggers_files_count > 0:
+    if len(trigger_scripts_dict) > 0:
         logger.info('Running views definitions scripts')
-        logger.debug(triggers_script)
-        cur.execute(triggers_script)
+        logger.debug(trigger_scripts_dict)
+        for key, value in trigger_scripts_dict.items():
+            if value:
+                cur.execute(value)
         logger.info('Views loaded to schema {0}'.format(schema_name))
     else:
         logger.info('No view scripts to deploy')
@@ -660,7 +661,9 @@ def _migrate_pgpm_version(cur, conn, connection_string, migrate_or_leave):
     version_pgpm_db_tuple = _get_pgpm_installed_v(cur)
     version_pgpm_db = version.StrictVersion(".".join(version_pgpm_db_tuple))
     version_pgpm_script = version.StrictVersion(_version.__version__)
-    for file_info in pkg_resources.resource_listdir(__name__, 'scripts/migrations/'):
+    migration_files_list = sorted(pkg_resources.resource_listdir(__name__, 'scripts/migrations/'),
+                                  key=lambda filename: version.StrictVersion(filename.split('-')[0]))
+    for file_info in migration_files_list:
         versions_list = re.compile(migrations_file_re, flags=re.IGNORECASE).findall(file_info)
         version_a = version.StrictVersion(versions_list[0][0])
         version_b = version.StrictVersion(versions_list[0][1])
