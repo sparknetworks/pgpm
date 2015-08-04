@@ -126,6 +126,8 @@ BEGIN
 
         INSERT INTO deployment_events (dpl_ev_pkg_id, dpl_ev_txid, dpl_ev_vcs_ref, dpl_ev_vcs_link, dpl_ev_issue_id, dpl_ev_issue_link)
             VALUES (l_existing_pkg_id, txid_current(), p_pkg_vcs_ref, p_pkg_vcs_link, p_pkg_issue_ref, p_pkg_issue_link);
+
+        return_value := l_existing_pkg_id;
     ELSE -- Case 2:
         INSERT INTO packages (
             pkg_name,

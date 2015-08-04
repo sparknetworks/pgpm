@@ -13,7 +13,7 @@ Usage:
                 [--vcs-ref <vcs_reference>] [--vcs-link <vcs_link>]
                 [--issue-ref <issue_reference>] [--issue-link <issue_link>]
   pgpm remove <connection_string> --pkg-name <schema_name> <v_major> <v_minor> <v_patch> <v_pre> [--old-rev <old_rev>]
-  pgpm install <connection_string> [--update]
+  pgpm install <connection_string> [--update|--upgrade] [--debug-mode] [-u | --user <user_role>...]
   pgpm uninstall <connection_string>
   pgpm -h | --help
   pgpm -v | --version
@@ -41,6 +41,7 @@ Options:
   -u <user_role>..., --user <user_role>...
                             Roles to which GRANT USAGE privilege will be applied.
                             If omitted, default behaviour of DB applies
+                            In case used with install GRANT ALL will be applied
   -m <mode>, --mode <mode>  Deployment mode. Can be:
                             * safe. Add constraints to deployment. Will not deploy schema
                             if it already exists in the DB
@@ -55,6 +56,7 @@ Options:
                             Provides path to additional config file. Attributes of this file overwrite config.json
   --debug-mode              Debug level loggin enabled if command is present. Otherwise Info level
   --update                  Update pgpm to a newer version
+  --upgrade                  Update pgpm to a newer version
   --vcs-ref <vcs_reference> Adds vcs reference to deployments log table
   --vcs-link <vcs_link>     Adds link to repository to deployments log table
   --issue-ref <issue_reference>
@@ -310,6 +312,16 @@ def install_manager(arguments):
     # get pgpm functions
     scripts_dict = collect_scripts_from_files('scripts/functions', False, True, True)
 
+    # check if current user is a super user
+    cur.execute("select usesuper from pg_user where usename = CURRENT_USER;")
+    is_cur_superuser = cur.fetchone()[0]
+    if not is_cur_superuser:
+        logger.warning('User {0} is not a superuser. It is recommended that you connect as superuser '
+                       'when installing pgpm as some operation might need superuser rights')
+
+    # check if users of pgpm are specified
+    if arguments['--user']
+
     # Create schema if it doesn't exist
     if schema_exists(cur, _variables.PGPM_SCHEMA_NAME):
         # Executing pgpm functions
@@ -330,7 +342,7 @@ def install_manager(arguments):
         pgpm_v_db = version.StrictVersion(".".join(pgpm_v_db_tuple))
         pgpm_v_script = version.StrictVersion(_version.__version__)
         if pgpm_v_script > pgpm_v_db:
-            if arguments['--update']:
+            if arguments['--update'] or arguments['--upgrade']:
                 _migrate_pgpm_version(cur, conn, arguments['<connection_string>'], True)
             else:
                 _migrate_pgpm_version(cur, conn, arguments['<connection_string>'], False)
@@ -565,16 +577,21 @@ def deployment_manager(arguments):
         logger.info('No type scripts to deploy')
 
     # Executing Table DDL scripts
+    executed_table_scripts = []
     if len(table_scripts_dict) > 0:
         logger.info('Running Table DDL scripts')
-        for key, value in OrderedDict(sorted(table_scripts_dict.items(), key=lambda t: t[0])):
+        for key, value in OrderedDict(sorted(table_scripts_dict.items(), key=lambda t: t[0])).items():
             cur.execute(SET_SEARCH_PATH.format(_variables.PGPM_SCHEMA_NAME))
-            cur.callproc('{0}._is_table_ddl_executed'.format(_variables.PGPM_SCHEMA_NAME), key)
+            cur.callproc('{0}._is_table_ddl_executed'.format(_variables.PGPM_SCHEMA_NAME), [key])
             is_table_executed = cur.fetchone()[0]
-            if is_table_executed and value:
+            if (not is_table_executed) and value:
                 cur.execute(value)
                 logger.debug(value)
-        logger.info('Table DDL executed for schema {0}'.format(schema_name))
+                logger.info('{0} executed for schema {1}'.format(key, schema_name))
+                executed_table_scripts.append(key)
+            else:
+                logger.info('{0} is not executed for schema {1} as it has already been executed before. '
+                            .format(key, schema_name))
     else:
         logger.info('No Table DDL scripts to execute')
 
@@ -630,6 +647,10 @@ def deployment_manager(arguments):
                   issue_link])
     logger.info('Meta info about deployment was added to schema {0}'
                 .format(_variables.PGPM_SCHEMA_NAME))
+    pgpm_package_id = cur.fetchone()[0]
+    if len(table_scripts_dict) > 0:
+        for key in executed_table_scripts:
+            cur.callproc('{0}._log_table_evolution'.format(_variables.PGPM_SCHEMA_NAME), [key, pgpm_package_id])
 
     # Commit transaction
     conn.commit()
@@ -682,11 +703,12 @@ def _migrate_pgpm_version(cur, conn, connection_string, migrate_or_leave):
                 conn.commit()
                 logger.info('Successfully finished running version upgrade script {0}'
                             .format(file_info))
-            else:
-                logger.error('{0} schema version is outdated. Please run pgpm install --upgrade first.'
-                             .format(_variables.PGPM_SCHEMA_NAME))
-                close_db_conn(cur, conn, connection_string)
-                sys.exit(1)
+
+    if not migrate_or_leave:
+        logger.error('{0} schema version is outdated. Please run pgpm install --upgrade first.'
+                     .format(_variables.PGPM_SCHEMA_NAME))
+        close_db_conn(cur, conn, connection_string)
+        sys.exit(1)
 
 
 def main():
