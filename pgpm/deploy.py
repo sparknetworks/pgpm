@@ -376,6 +376,15 @@ def install_manager(arguments):
         _install_script = pkgutil.get_data('pgpm', 'scripts/install.tmpl.sql').decode('utf-8')
         logger.info('Installing package manager')
         cur.execute(_install_script.format(schema_name=_variables.PGPM_SCHEMA_NAME))
+        migration_files_list = sorted(pkg_resources.resource_listdir(__name__, 'scripts/migrations/'),
+                                      key=lambda filename: version.StrictVersion(filename.split('-')[0]))
+        for file_info in migration_files_list:
+            # Python 3.x doesn't have format for byte strings so we have to convert
+            migration_script = pkg_resources.resource_string(__name__, 'scripts/migrations/{0}'.format(file_info))\
+                .decode('utf-8').format(schema_name=_variables.PGPM_SCHEMA_NAME)
+            logger.info('Running version upgrade script {0}'.format(file_info))
+            logger.debug(migration_script)
+            cur.execute(migration_script)
 
         # Executing pgpm functions
         if len(scripts_dict) > 0:
