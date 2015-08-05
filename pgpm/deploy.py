@@ -89,6 +89,10 @@ from docopt import docopt
 from distutils import version
 
 SET_SEARCH_PATH = "SET search_path TO {0}, public;"
+GRANT_DEFAULT_PRIVILEGES = "ALTER DEFAULT PRIVILEGES IN SCHEMA {0} GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO {1};" \
+                           "ALTER DEFAULT PRIVILEGES IN SCHEMA {0} GRANT EXECUTE ON ALL FUNCTIONS TO {1};" \
+                           "GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA {0} TO {1};" \
+                           "GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA {0} TO {1};"
 
 # getting logging
 logger = logging.getLogger(__name__)
@@ -320,7 +324,14 @@ def install_manager(arguments):
                        'when installing pgpm as some operation might need superuser rights')
 
     # check if users of pgpm are specified
-    if arguments['--user']
+    user_roles = arguments['--user']
+    if not user_roles:
+        logger.warning('No user was specified to have permisions on _pgpm schema. '
+                       'This means only user that installed _pgpm will be able to deploy. '
+                       'We recommend adding more users.')
+    else:
+        # set default privilages to users
+        cur.execute(GRANT_DEFAULT_PRIVILEGES.format(_variables.PGPM_SCHEMA_NAME, ', '.join(user_roles)))
 
     # Create schema if it doesn't exist
     if schema_exists(cur, _variables.PGPM_SCHEMA_NAME):

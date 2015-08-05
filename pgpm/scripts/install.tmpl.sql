@@ -93,4 +93,17 @@ $$BEGIN
     COMMENT ON COLUMN deployment_events.dpl_ev_issue_link IS
         'Link to an issue related to this deployment in issue tracker.';
 
+    CREATE TABLE ddl_changes_log
+    (
+        ddl_change_id SERIAL NOT NULL,
+        dpl_ev_id INTEGER,
+        ddl_change_user NAME DEFAULT current_user,
+        ddl_change TEXT,
+        ddl_change_txid BIGINT DEFAULT txid_current(),
+        ddl_change_created TIMESTAMP DEFAULT NOW(),
+        CONSTRAINT ddl_change_pkey PRIMARY KEY (ddl_change_id)
+    );
+    COMMENT ON TABLE ddl_changes_log IS
+        'Log of changes of DDL in database linked to deployment events if happened through deployment';
+
 END$$;
