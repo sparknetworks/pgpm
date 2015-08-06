@@ -91,8 +91,10 @@ from distutils import version
 SET_SEARCH_PATH = "SET search_path TO {0}, public;"
 GRANT_DEFAULT_PRIVILEGES = "ALTER DEFAULT PRIVILEGES IN SCHEMA {0} GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO {1};" \
                            "ALTER DEFAULT PRIVILEGES IN SCHEMA {0} GRANT EXECUTE ON FUNCTIONS TO {1};" \
+                           "ALTER DEFAULT PRIVILEGES IN SCHEMA {0} GRANT USAGE, SELECT ON SEQUENCES TO {1};" \
                            "GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA {0} TO {1};" \
-                           "GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA {0} TO {1};"
+                           "GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA {0} TO {1};" \
+                           "GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA {0} TO {1};"
 
 # getting logging
 logger = logging.getLogger(__name__)
