@@ -90,7 +90,7 @@ from distutils import version
 
 SET_SEARCH_PATH = "SET search_path TO {0}, public;"
 GRANT_DEFAULT_PRIVILEGES = "ALTER DEFAULT PRIVILEGES IN SCHEMA {0} GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO {1};" \
-                           "ALTER DEFAULT PRIVILEGES IN SCHEMA {0} GRANT EXECUTE ON ALL FUNCTIONS TO {1};" \
+                           "ALTER DEFAULT PRIVILEGES IN SCHEMA {0} GRANT EXECUTE ON FUNCTIONS TO {1};" \
                            "GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA {0} TO {1};" \
                            "GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA {0} TO {1};"
 
@@ -341,7 +341,8 @@ def install_manager(arguments):
             logger.debug(scripts_dict)
             cur.execute(SET_SEARCH_PATH.format(_variables.PGPM_SCHEMA_NAME))
             for key, value in scripts_dict.items():
-                cur.execute(value)
+                if value:
+                    cur.execute(value)
             logger.info('Functions loaded to schema {0}'.format(_variables.PGPM_SCHEMA_NAME))
         else:
             logger.info('No function scripts to deploy')
@@ -378,14 +379,6 @@ def install_manager(arguments):
         cur.execute(_install_script.format(schema_name=_variables.PGPM_SCHEMA_NAME))
         migration_files_list = sorted(pkg_resources.resource_listdir(__name__, 'scripts/migrations/'),
                                       key=lambda filename: version.StrictVersion(filename.split('-')[0]))
-        for file_info in migration_files_list:
-            # Python 3.x doesn't have format for byte strings so we have to convert
-            migration_script = pkg_resources.resource_string(__name__, 'scripts/migrations/{0}'.format(file_info))\
-                .decode('utf-8').format(schema_name=_variables.PGPM_SCHEMA_NAME)
-            logger.info('Running version upgrade script {0}'.format(file_info))
-            logger.debug(migration_script)
-            cur.execute(migration_script)
-
         # Executing pgpm functions
         if len(scripts_dict) > 0:
             logger.info('Running functions definitions scripts')
@@ -396,6 +389,15 @@ def install_manager(arguments):
             logger.info('Functions loaded to schema {0}'.format(_variables.PGPM_SCHEMA_NAME))
         else:
             logger.info('No function scripts to deploy')
+
+        # Executing migration scripts after as they contain triggers that trigger functions that were created on top
+        for file_info in migration_files_list:
+            # Python 3.x doesn't have format for byte strings so we have to convert
+            migration_script = pkg_resources.resource_string(__name__, 'scripts/migrations/{0}'.format(file_info))\
+                .decode('utf-8').format(schema_name=_variables.PGPM_SCHEMA_NAME)
+            logger.info('Running version upgrade script {0}'.format(file_info))
+            logger.debug(migration_script)
+            cur.execute(migration_script)
 
         conn.commit()
 
