@@ -35,13 +35,18 @@ Options:
                             Should be followed by the list of names of files to deploy.
   --full-path               By file deployment will take <file_name> as full relative path and only as file name
   -o <owner_role>, --owner <owner_role>
-                            Role to which schema owner will be changed. User connecting to DB
+                            Role to which schema owner and all objects inside will be changed. User connecting to DB
                             needs to be a superuser. If omitted, user running the script
-                            will the owner of schema
+                            will be the owner of schema and all objects inside
+                            If --mode flag is *overwrite* or --file flag is used then this is ignored
+                            as no new schema is created
   -u <user_role>..., --user <user_role>...
-                            Roles to which GRANT USAGE privilege will be applied.
+                            Roles to which different usage privileges will be applied.
                             If omitted, default behaviour of DB applies
-                            In case used with install GRANT ALL will be applied
+                            In case used with install the following will be applied:
+                            GRANT SELECT, INSERT, UPDATE, DELETE on all current and future tables
+                            GRANT EXECUTE on all future and current functions
+                            GRANT USAGE, SELECT on all current and future sequences
   -m <mode>, --mode <mode>  Deployment mode. Can be:
                             * safe. Add constraints to deployment. Will not deploy schema
                             if it already exists in the DB
@@ -89,15 +94,17 @@ from docopt import docopt
 from distutils import version
 
 SET_SEARCH_PATH = "SET search_path TO {0}, public;"
-GRANT_DEFAULT_PRIVILEGES = "ALTER DEFAULT PRIVILEGES IN SCHEMA {0} GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO {1};" \
-                           "ALTER DEFAULT PRIVILEGES IN SCHEMA {0} GRANT EXECUTE ON FUNCTIONS TO {1};" \
-                           "ALTER DEFAULT PRIVILEGES IN SCHEMA {0} GRANT USAGE, SELECT ON SEQUENCES TO {1};" \
-                           "GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA {0} TO {1};" \
-                           "GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA {0} TO {1};" \
-                           "GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA {0} TO {1};"
+GRANT_DEFAULT_USAGE_PRIVILEGES = "ALTER DEFAULT PRIVILEGES IN SCHEMA {0} " \
+                                 "GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO {1};" \
+                                 "ALTER DEFAULT PRIVILEGES IN SCHEMA {0} GRANT EXECUTE ON FUNCTIONS TO {1};" \
+                                 "ALTER DEFAULT PRIVILEGES IN SCHEMA {0} GRANT USAGE, SELECT ON SEQUENCES TO {1};"
+GRANT_USAGE_PRIVILEGES = "GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA {0} TO {1};" \
+                         "GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA {0} TO {1};" \
+                         "GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA {0} TO {1};"
 
 # getting logging
 logger = logging.getLogger(__name__)
+
 
 def connect_db(connection_string):
     """
@@ -130,18 +137,29 @@ def schema_exists(cur, schema_name):
     return cur.fetchone()[0]
 
 
-def create_db_schema(cur, schema_name, users, owner):
+def create_db_schema(cur, schema_name):
     """
     Create Postgres schema script and execute it on cursor
     """
-    _create_schema_script = "CREATE SCHEMA {0} ;\n".format(schema_name)
-    if users:
-        _create_schema_script += "GRANT USAGE ON SCHEMA {0} TO {1};\n".format(schema_name, ", ".join(users))
-    if owner:
-        _create_schema_script += "ALTER SCHEMA {0} OWNER TO {1};\n".format(schema_name, owner)
-    _create_schema_script += SET_SEARCH_PATH.format(schema_name)
-    cur.execute(_create_schema_script)
+    create_schema_script = "CREATE SCHEMA {0} ;\n".format(schema_name)
+    create_schema_script += SET_SEARCH_PATH.format(schema_name)
+    cur.execute(create_schema_script)
     logger.info('Schema {0} was created and search_path was changed.'.format(schema_name))
+
+
+def alter_schema_privileges(cur, schema_name, users, owner):
+    """
+    Create Postgres schema script and execute it on cursor
+    """
+    if users:
+        alter_schema_usage_script = GRANT_USAGE_PRIVILEGES.format(schema_name, ", ".join(users))
+        cur.execute(alter_schema_usage_script)
+        logger.info('User(s) {0} was (were) granted full usage permissions on schema {1}.'
+                    .format(", ".join(users), schema_name))
+    if owner:
+        cur.callproc('_alter_schema_owner', [schema_name, owner])
+        logger.info('Ownership of schema {0} and all its objects was changed and granted to user {1}.'
+                    .format(schema_name, owner))
 
 
 def find_whole_word(w):
@@ -186,7 +204,8 @@ def collect_scripts_from_files(script_paths, files_deployment, is_package=False,
                     logger.debug('{0}'.format(script_path))
                     for file_info in pkg_resources.resource_listdir(__name__, script_path):
                         scripts_dict[file_info] = pkg_resources.resource_string(__name__, '{0}/{1}'
-                                                                                .format(script_path, file_info)).decode('utf-8')
+                                                                                .format(script_path, file_info))\
+                            .decode('utf-8')
                         logger.info('{0}/{1}'.format(script_path, file_info))
             else:
                 for script_path in script_paths:
@@ -333,7 +352,8 @@ def install_manager(arguments):
                        'We recommend adding more users.')
     else:
         # set default privilages to users
-        cur.execute(GRANT_DEFAULT_PRIVILEGES.format(_variables.PGPM_SCHEMA_NAME, ', '.join(user_roles)))
+        cur.execute(GRANT_DEFAULT_USAGE_PRIVILEGES.format(_variables.PGPM_SCHEMA_NAME, ', '.join(user_roles)))
+        cur.execute(GRANT_USAGE_PRIVILEGES.format(_variables.PGPM_SCHEMA_NAME, ', '.join(user_roles)))
 
     # Create schema if it doesn't exist
     if schema_exists(cur, _variables.PGPM_SCHEMA_NAME):
@@ -474,13 +494,10 @@ def deployment_manager(arguments):
 
     # Get scripts
     type_scripts_dict = get_scripts("types_path", config_data, files_deployment, "types", is_full_path)
-    function_scripts_dict = get_scripts("functions_path", config_data, files_deployment,
-                                                          "functions", is_full_path)
+    function_scripts_dict = get_scripts("functions_path", config_data, files_deployment, "functions", is_full_path)
     view_scripts_dict = get_scripts("views_path", config_data, files_deployment, "views", is_full_path)
-    trigger_scripts_dict = get_scripts("triggers_path", config_data, files_deployment, "triggers",
-                                                        is_full_path)
-    table_scripts_dict = get_scripts("tables_path", config_data, files_deployment, "tables",
-                                                    is_full_path)
+    trigger_scripts_dict = get_scripts("triggers_path", config_data, files_deployment, "triggers", is_full_path)
+    table_scripts_dict = get_scripts("tables_path", config_data, files_deployment, "tables", is_full_path)
 
     # Connect to DB
     conn, cur = connect_db(arguments['<connection_string>'])
@@ -546,7 +563,7 @@ def deployment_manager(arguments):
             logger.info('Search_path was changed to schema {0}'.format(schema_name))
     else:
         if not schema_exists(cur, schema_name):
-            create_db_schema(cur, schema_name, user_roles, owner_role)
+            create_db_schema(cur, schema_name)
         elif arguments['--mode'][0] == 'safe':
             logger.error('Schema already exists. It won\'t be overriden in safe mode. '
                          'Rerun your script without "-m moderate" or "-m unsafe" flags')
@@ -578,12 +595,12 @@ def deployment_manager(arguments):
                           config_obj.version.pre])
             logger.info('Schema {0} was renamed to {1}. Meta info was added to {2} schema'
                         .format(schema_name, _old_schema_name, _variables.PGPM_SCHEMA_NAME))
-            create_db_schema(cur, schema_name, user_roles, owner_role)
+            create_db_schema(cur, schema_name)
         elif arguments['--mode'][0] == 'unsafe':
             _drop_schema_script = "DROP SCHEMA {0} CASCADE;\n".format(schema_name)
             cur.execute(_drop_schema_script)
             logger.info('Dropping old schema {0}'.format(schema_name))
-            create_db_schema(cur, schema_name, user_roles, owner_role)
+            create_db_schema(cur, schema_name)
 
     # Reordering and executing types
     if len(type_scripts_dict) > 0:
@@ -651,6 +668,9 @@ def deployment_manager(arguments):
         logger.info('Views loaded to schema {0}'.format(schema_name))
     else:
         logger.info('No view scripts to deploy')
+
+    # alter schema privileges if needed
+    alter_schema_privileges(cur, schema_name, user_roles, owner_role)
 
     # Add metadata to pgpm schema
     cur.execute(SET_SEARCH_PATH.format(_variables.PGPM_SCHEMA_NAME))
