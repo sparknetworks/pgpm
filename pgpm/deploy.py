@@ -43,10 +43,14 @@ Options:
   -u <user_role>..., --user <user_role>...
                             Roles to which different usage privileges will be applied.
                             If omitted, default behaviour of DB applies
-                            In case used with install the following will be applied:
+                            In case used with install command the following will be applied:
                             GRANT SELECT, INSERT, UPDATE, DELETE on all current and future tables
                             GRANT EXECUTE on all future and current functions
                             GRANT USAGE, SELECT on all current and future sequences
+                            In case used with deploy command the following will be applied:
+                            GRANT SELECT, INSERT, UPDATE, DELETE on all current tables
+                            GRANT EXECUTE on all current functions
+                            GRANT USAGE, SELECT on all current sequences
   -m <mode>, --mode <mode>  Deployment mode. Can be:
                             * safe. Add constraints to deployment. Will not deploy schema
                             if it already exists in the DB
@@ -157,6 +161,7 @@ def alter_schema_privileges(cur, schema_name, users, owner):
         logger.info('User(s) {0} was (were) granted full usage permissions on schema {1}.'
                     .format(", ".join(users), schema_name))
     if owner:
+        cur.execute(SET_SEARCH_PATH.format(_variables.PGPM_SCHEMA_NAME))
         cur.callproc('_alter_schema_owner', [schema_name, owner])
         logger.info('Ownership of schema {0} and all its objects was changed and granted to user {1}.'
                     .format(schema_name, owner))

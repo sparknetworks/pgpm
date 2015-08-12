@@ -13,7 +13,13 @@ $BODY$
 --
 ---
 DECLARE
-    l_statement TEXT[];
+    l_functions TEXT;
+    l_tables TEXT;
+    l_sequences TEXT;
+    l_views TEXT;
+    l_domains TEXT;
+    l_triggers TEXT;
+    l_types TEXT;
 
 BEGIN
     SELECT string_agg('ALTER FUNCTION '
@@ -25,27 +31,54 @@ BEGIN
     FROM   pg_catalog.pg_proc p
     JOIN   pg_catalog.pg_namespace n ON n.oid = p.pronamespace
     WHERE  n.nspname = p_schema
-    INTO l_statement[0];
+    INTO l_functions;
+    IF l_functions IS NULL THEN
+        l_functions := '';
+    END IF;
 
-    SELECT string_agg('ALTER TABLE '|| quote_ident(tablename) ||' OWNER TO ' || p_owner || ';', E'\n')
+    SELECT string_agg('ALTER TABLE ' || quote_ident(schemaname) || '.' || quote_ident(tablename) ||' OWNER TO ' || p_owner || ';', E'\n')
     FROM pg_tables WHERE schemaname = p_schema
-    INTO l_statement[1];
+    INTO l_tables;
+    IF l_tables IS NULL THEN
+        l_tables := '';
+    END IF;
 
-    SELECT string_agg('ALTER SEQUENCE '|| quote_ident(sequence_name) ||' OWNER TO ' || p_owner || ';', E'\n')
+    SELECT string_agg('ALTER SEQUENCE ' || quote_ident(sequence_schema) || '.' || quote_ident(sequence_name) ||' OWNER TO ' || p_owner || ';', E'\n')
     FROM information_schema.sequences WHERE sequence_schema = p_schema
-    INTO l_statement[2];
+    INTO l_sequences;
+    IF l_sequences IS NULL THEN
+        l_sequences := '';
+    END IF;
 
-    SELECT string_agg('ALTER VIEW '|| quote_ident(table_name) ||' OWNER TO ' || p_owner || ';', E'\n')
+    SELECT string_agg('ALTER VIEW ' || quote_ident(table_schema) || '.' || quote_ident(table_name) ||' OWNER TO ' || p_owner || ';', E'\n')
     FROM information_schema.views WHERE table_schema = p_schema
-    INTO l_statement[3];
+    INTO l_views;
+    IF l_views IS NULL THEN
+        l_views := '';
+    END IF;
 
-    SELECT string_agg('ALTER DOMAIN '|| quote_ident(domain_name) ||' OWNER TO ' || p_owner || ';', E'\n')
+    SELECT string_agg('ALTER DOMAIN ' || quote_ident(domain_schema) || '.' || quote_ident(domain_name) ||' OWNER TO ' || p_owner || ';', E'\n')
     FROM information_schema.domains WHERE domain_schema = p_schema
-    INTO l_statement[4];
+    INTO l_domains;
+    IF l_domains IS NULL THEN
+        l_domains := '';
+    END IF;
 
-    SELECT string_agg('ALTER TRIGGER '|| quote_ident(trigger_name) ||' OWNER TO ' || p_owner || ';', E'\n')
+    SELECT string_agg('ALTER TRIGGER ' || quote_ident(trigger_schema) || '.' || quote_ident(trigger_name) ||' OWNER TO ' || p_owner || ';', E'\n')
     FROM information_schema.triggers WHERE trigger_schema = p_schema
-    INTO l_statement[5];
+    INTO l_triggers;
+    IF l_triggers IS NULL THEN
+        l_triggers := '';
+    END IF;
+
+    SELECT string_agg('ALTER TYPE ' || quote_ident(user_defined_type_schema) || '.' || quote_ident(user_defined_type_name) ||' OWNER TO ' || p_owner || ';', E'\n')
+    FROM information_schema.user_defined_types WHERE user_defined_type_schema = p_schema
+    INTO l_types;
+    IF l_types IS NULL THEN
+        l_types := '';
+    END IF;
+
+    EXECUTE l_functions || l_tables || l_sequences || l_views || l_domains || l_triggers || l_types;
 
 END;
 $BODY$
