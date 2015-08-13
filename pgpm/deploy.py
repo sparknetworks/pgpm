@@ -342,12 +342,16 @@ def install_manager(arguments):
     # get pgpm functions
     scripts_dict = collect_scripts_from_files('scripts/functions', False, True, True)
 
+    # get current user
+    cur.execute("select * from CURRENT_USER;")
+    current_user = cur.fetchone()[0]
+
     # check if current user is a super user
     cur.execute("select usesuper from pg_user where usename = CURRENT_USER;")
     is_cur_superuser = cur.fetchone()[0]
     if not is_cur_superuser:
         logger.warning('User {0} is not a superuser. It is recommended that you connect as superuser '
-                       'when installing pgpm as some operation might need superuser rights')
+                       'when installing pgpm as some operation might need superuser rights'.format(current_user))
 
     # check if users of pgpm are specified
     user_roles = arguments['--user']
@@ -626,7 +630,7 @@ def deployment_manager(arguments):
     executed_table_scripts = []
     if len(table_scripts_dict) > 0:
         logger.info('Running Table DDL scripts')
-        for key, value in OrderedDict(sorted(table_scripts_dict.items(), key=lambda t: t[0])).items():
+        for key, value in OrderedDict(sorted(table_scripts_dict.items(), key=lambda t: int(t[0].rsplit('.', 1)[0]))).items():
             cur.execute(SET_SEARCH_PATH.format(_variables.PGPM_SCHEMA_NAME))
             cur.callproc('{0}._is_table_ddl_executed'.format(_variables.PGPM_SCHEMA_NAME), [key])
             is_table_executed = cur.fetchone()[0]
@@ -665,14 +669,14 @@ def deployment_manager(arguments):
 
     # Executing triggers
     if len(trigger_scripts_dict) > 0:
-        logger.info('Running views definitions scripts')
+        logger.info('Running trigger definitions scripts')
         logger.debug(trigger_scripts_dict)
         for key, value in trigger_scripts_dict.items():
             if value:
                 cur.execute(value)
-        logger.info('Views loaded to schema {0}'.format(schema_name))
+        logger.info('Triggers loaded to schema {0}'.format(schema_name))
     else:
-        logger.info('No view scripts to deploy')
+        logger.info('No trigger scripts to deploy')
 
     # alter schema privileges if needed
     alter_schema_privileges(cur, schema_name, user_roles, owner_role)
