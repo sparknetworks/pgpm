@@ -21,5 +21,9 @@ BEGIN
             SELECT ddl_change_txid, ddl_change FROM _pgpm.ddl_changes_log
             WHERE ddl_change_txid = l_txid AND ddl_change = l_current_query
         );
+
+    -- Notify external channels of ddl change
+    PERFORM pg_notify('ddl_change', "current_user"());
+
 END;
 $$;

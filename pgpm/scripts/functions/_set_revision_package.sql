@@ -69,7 +69,7 @@ BEGIN
                 SELECT max(dpl_ev_time) FROM deployment_events WHERE dpl_ev_pkg_id=packages.pkg_id
             );
     ELSE
-        RAISE EXCEPTION 'Data exception';
+        RAISE EXCEPTION 'Package % not found in the list of packages. It could happen if schema exists but wasn''t properly deployed with pgpm', p_pkg_name || '_' || p_pkg_v_major || '_' || p_pkg_v_minor || '_' || p_pkg_v_patch;
     END IF;
 
     -- Notify external channels of successful deployment event

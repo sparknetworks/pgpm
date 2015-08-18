@@ -98,13 +98,16 @@ from docopt import docopt
 from distutils import version
 
 SET_SEARCH_PATH = "SET search_path TO {0}, public;"
-GRANT_DEFAULT_USAGE_PRIVILEGES = "ALTER DEFAULT PRIVILEGES IN SCHEMA {0} " \
-                                 "GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO {1};" \
-                                 "ALTER DEFAULT PRIVILEGES IN SCHEMA {0} GRANT EXECUTE ON FUNCTIONS TO {1};" \
-                                 "ALTER DEFAULT PRIVILEGES IN SCHEMA {0} GRANT USAGE, SELECT ON SEQUENCES TO {1};"
-GRANT_USAGE_PRIVILEGES = "GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA {0} TO {1};" \
-                         "GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA {0} TO {1};" \
-                         "GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA {0} TO {1};"
+GRANT_DEFAULT_USAGE_INSTALL_PRIVILEGES = "ALTER DEFAULT PRIVILEGES IN SCHEMA {0} " \
+                                         "GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO {1};" \
+                                         "ALTER DEFAULT PRIVILEGES IN SCHEMA {0} GRANT EXECUTE ON FUNCTIONS TO {1};" \
+                                         "ALTER DEFAULT PRIVILEGES IN SCHEMA {0} " \
+                                         "GRANT USAGE, SELECT ON SEQUENCES TO {1};"
+GRANT_USAGE_INSTALL_PRIVILEGES = "GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA {0} TO {1};" \
+                                 "GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA {0} TO {1};" \
+                                 "GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA {0} TO {1};"
+
+GRANT_USAGE_PRIVILEGES = "GRANT USAGE ON SCHEMA {0} TO {1}"
 
 # getting logging
 logger = logging.getLogger(__name__)
@@ -151,15 +154,21 @@ def create_db_schema(cur, schema_name):
     logger.info('Schema {0} was created and search_path was changed.'.format(schema_name))
 
 
-def alter_schema_privileges(cur, schema_name, users, owner):
+def alter_schema_privileges(cur, schema_name, users, owner, process='deployment'):
     """
     Create Postgres schema script and execute it on cursor
     """
     if users:
-        alter_schema_usage_script = GRANT_USAGE_PRIVILEGES.format(schema_name, ", ".join(users))
-        cur.execute(alter_schema_usage_script)
-        logger.info('User(s) {0} was (were) granted full usage permissions on schema {1}.'
-                    .format(", ".join(users), schema_name))
+        if process == 'deployment':
+            alter_schema_usage_script = GRANT_USAGE_PRIVILEGES.format(schema_name, ", ".join(users))
+            cur.execute(alter_schema_usage_script)
+            logger.info('User(s) {0} was (were) granted usage permissions on schema {1}.'
+                        .format(", ".join(users), schema_name))
+        elif process == 'installation':
+            alter_schema_usage_script = GRANT_USAGE_INSTALL_PRIVILEGES.format(schema_name, ", ".join(users))
+            cur.execute(alter_schema_usage_script)
+            logger.info('User(s) {0} was (were) granted full usage permissions on schema {1}.'
+                        .format(", ".join(users), schema_name))
     if owner:
         cur.execute(SET_SEARCH_PATH.format(_variables.PGPM_SCHEMA_NAME))
         cur.callproc('_alter_schema_owner', [schema_name, owner])
@@ -353,17 +362,6 @@ def install_manager(arguments):
         logger.warning('User {0} is not a superuser. It is recommended that you connect as superuser '
                        'when installing pgpm as some operation might need superuser rights'.format(current_user))
 
-    # check if users of pgpm are specified
-    user_roles = arguments['--user']
-    if not user_roles:
-        logger.warning('No user was specified to have permisions on _pgpm schema. '
-                       'This means only user that installed _pgpm will be able to deploy. '
-                       'We recommend adding more users.')
-    else:
-        # set default privilages to users
-        cur.execute(GRANT_DEFAULT_USAGE_PRIVILEGES.format(_variables.PGPM_SCHEMA_NAME, ', '.join(user_roles)))
-        cur.execute(GRANT_USAGE_PRIVILEGES.format(_variables.PGPM_SCHEMA_NAME, ', '.join(user_roles)))
-
     # Create schema if it doesn't exist
     if schema_exists(cur, _variables.PGPM_SCHEMA_NAME):
         # Executing pgpm functions
@@ -431,6 +429,17 @@ def install_manager(arguments):
             cur.execute(migration_script)
 
         conn.commit()
+
+    # check if users of pgpm are specified
+    user_roles = arguments['--user']
+    if not user_roles:
+        logger.warning('No user was specified to have permisions on _pgpm schema. '
+                       'This means only user that installed _pgpm will be able to deploy. '
+                       'We recommend adding more users.')
+    else:
+        # set default privilages to users
+        cur.execute(GRANT_DEFAULT_USAGE_INSTALL_PRIVILEGES.format(_variables.PGPM_SCHEMA_NAME, ', '.join(user_roles)))
+        cur.execute(GRANT_USAGE_INSTALL_PRIVILEGES.format(_variables.PGPM_SCHEMA_NAME, ', '.join(user_roles)))
 
     cur.execute(SET_SEARCH_PATH.format(_variables.PGPM_SCHEMA_NAME))
     cur.callproc('{0}._upsert_package_info'.format(_variables.PGPM_SCHEMA_NAME),
@@ -679,7 +688,8 @@ def deployment_manager(arguments):
         logger.info('No trigger scripts to deploy')
 
     # alter schema privileges if needed
-    alter_schema_privileges(cur, schema_name, user_roles, owner_role)
+    if (not files_deployment) and arguments['--mode'][0] != 'overwrite':
+        alter_schema_privileges(cur, schema_name, user_roles, owner_role)
 
     # Add metadata to pgpm schema
     cur.execute(SET_SEARCH_PATH.format(_variables.PGPM_SCHEMA_NAME))
