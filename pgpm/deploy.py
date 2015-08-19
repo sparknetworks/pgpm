@@ -11,7 +11,7 @@ Usage:
                 [-f <file_name>...] [--add-config <config_file_path>]
                 [--full-path] [--debug-mode]
                 [--vcs-ref <vcs_reference>] [--vcs-link <vcs_link>]
-                [--issue-ref <issue_reference>] [--issue-link <issue_link>]
+                [--issue-ref <issue_reference>] [--issue-link <issue_link>] [--compare-table-scripts-as-int]
   pgpm remove <connection_string> --pkg-name <schema_name> <v_major> <v_minor> <v_patch> <v_pre> [--old-rev <old_rev>]
   pgpm install <connection_string> [--update|--upgrade] [--debug-mode] [-u | --user <user_role>...]
   pgpm uninstall <connection_string>
@@ -74,6 +74,10 @@ Options:
   --pkg-name <schema_name>  Package name to be removed
   --old-rev <old_rev>       If omitted all old revisions are deleted together with current revision.
                             If specified just the specified revision is deleted
+  --compare-table-scripts-as-int
+                            Flag says that when table scripts are running they should be ordered
+                            but first their names are to be converted to int.
+                            By default scripts are ordered by string comparison
 
 
 """
@@ -638,8 +642,15 @@ def deployment_manager(arguments):
     # Executing Table DDL scripts
     executed_table_scripts = []
     if len(table_scripts_dict) > 0:
+        if arguments['--compare-table-scripts-as-int']:
+            sorted_table_scripts_dict = OrderedDict(sorted(table_scripts_dict.items(),
+                                                           key=lambda t: int(t[0].rsplit('.', 1)[0])))
+        else:
+            sorted_table_scripts_dict = OrderedDict(sorted(table_scripts_dict.items(),
+                                                           key=lambda t: t[0].rsplit('.', 1)[0]))
+
         logger.info('Running Table DDL scripts')
-        for key, value in OrderedDict(sorted(table_scripts_dict.items(), key=lambda t: int(t[0].rsplit('.', 1)[0]))).items():
+        for key, value in sorted_table_scripts_dict.items():
             cur.execute(SET_SEARCH_PATH.format(_variables.PGPM_SCHEMA_NAME))
             cur.callproc('{0}._is_table_ddl_executed'.format(_variables.PGPM_SCHEMA_NAME), [key])
             is_table_executed = cur.fetchone()[0]
