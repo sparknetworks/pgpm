@@ -1,7 +1,6 @@
 CREATE OR REPLACE FUNCTION _log_ddl_change()
-    RETURNS EVENT_TRIGGER
-LANGUAGE plpgsql
-AS $$
+    RETURNS EVENT_TRIGGER AS
+$BODY$
 ---
 -- @description
 -- Logs any DDL changes to the DB
@@ -23,7 +22,8 @@ BEGIN
         );
 
     -- Notify external channels of ddl change
-    PERFORM pg_notify('ddl_change', "current_user"());
+    PERFORM pg_notify('ddl_change', "session_user"());
 
 END;
-$$;
+$BODY$
+LANGUAGE 'plpgsql' VOLATILE SECURITY DEFINER;
