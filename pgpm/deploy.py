@@ -588,7 +588,7 @@ def deployment_manager(arguments):
             create_db_schema(cur, schema_name)
         elif arguments['--mode'][0] == 'safe':
             logger.error('Schema already exists. It won\'t be overriden in safe mode. '
-                         'Rerun your script without "-m moderate" or "-m unsafe" flags')
+                         'Rerun your script with "-m moderate", "-m overwrite" or "-m unsafe" flags')
             close_db_conn(cur, conn, arguments.get('<connection_string>'))
             sys.exit(1)
         elif arguments['--mode'][0] == 'moderate':
