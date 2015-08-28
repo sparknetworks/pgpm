@@ -2,72 +2,61 @@ import psycopg2
 import psycopg2.extensions
 import logging
 
-# class
 
-class ConnectionManager:
+class MegaConnection(psycopg2.extensions.connection):
     """
-    Simple DB connections manager. Acts as a pool with one connection
+    A connection that uses `MegaCursor` automatically.
     """
+    def __init__(self, dsn, *more):
+        super().__init__(dsn, *more)
+        self._last_notice_flushed_index = -1
+        self.logger = logging.getLogger(__name__)
 
-    def __init__(self, connection_string, logger=None):
-        """
-        Initializes connection to DB
-        """
-        conn = psycopg2.connect(connection_string)
-        self._connection_string = connection_string
-        self._conn = conn
-        self.logger = logger or logging.getLogger(__name__)
+    def cursor(self, *args, **kwargs):
+        kwargs.setdefault('cursor_factory', MegaCursor)
+        return super(MegaConnection, self).cursor(*args, **kwargs)
 
-    def get_connection_db(self):
-        """
-        Connect to DB or exit on exception
-        """
-        if not self._conn or self._conn.closed != 0:
-            conn = psycopg2.connect(self._connection_string)
-            self._conn = conn
-            return conn
+    def fetch_new_notices(self):
+        if len(self.notices) > self._last_notice_flushed_index + 1:
+            unflushed_notices = self.notices[self._last_notice_flushed_index + 1:len(self.notices)]
+            self._last_notice_flushed_index = len(self.notices) - 1
+            return unflushed_notices
         else:
-            return self._conn
-
-    def close_connection_db(self):
-        """
-        Close DB connection and cursor
-        """
-        if not self._conn:
             return None
-        else:
-            return self._conn.close()
 
-    def call_stored_procedure_safely(self, name, arguments_list=None, commit=True):
+    def init(self, logger):
+        """Initialize the connection to log to `!logger`.
+        The `!logger` parameter is a Logger
+        instance from the standard logging module.
         """
-        Calls pg stored procedure and returns cursor.
-        Wrapper also rollbacks on exception and logs activity
-        :param name: name of procedure
-        :param arguments_list: arguments
-        :return: cursor
-        """
-        conn = self.get_connection_db()
-        cur = conn.cursor()
+        self.logger = logger or self.logger
+
+
+class MegaCursor(psycopg2.extensions.cursor):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if self.connection.__class__.__name__ != 'MegaConnection':
+            raise self.connection.ProgrammingError(
+                'MegaCursor can only be used with MegaConnection. Instead type "{0}" is used. '
+                'Reinitialise db connection with correct class'.format(self.connection.__class__.__name__))
+
+    def execute(self, query, args=None):
         try:
-            if arguments_list:
-                cur.callproc(name, arguments_list)
-                self.logger.debug('Stored procedure {0} with arguments {1} called'.format(name, arguments_list))
-            else:
-                cur.callproc(name)
-                self.logger.debug('Stored procedure {0} called'.format(name))
-            if commit:
-                conn.commit()
-        except psycopg2.InternalError:
-            conn.close()
-            conn = self.get_connection_db()
-            self.logger.exception('Database error')
-            pass
-        except:
-            conn.rollback()
-            self.logger.exception('Database error')
-            pass
+            return super(MegaCursor, self).execute(query, args)
+        finally:
+            self.connection.logger.debug(self.query.decode('utf-8'))
+            noticies = self.connection.fetch_new_notices()
+            if noticies:
+                for notice in noticies:
+                    self.connection.logger.debug(notice)
 
-        return cur
-
-
+    def callproc(self, procname, args=None):
+        try:
+            return super(MegaCursor, self).callproc(procname, args)
+        finally:
+            self.connection.logger.debug(self.query.decode('utf-8'))
+            noticies = self.connection.fetch_new_notices()
+            if noticies:
+                for notice in noticies:
+                    self.connection.logger.debug(notice)
 

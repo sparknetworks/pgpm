@@ -48,9 +48,8 @@ Options:
                             GRANT EXECUTE on all future and current functions
                             GRANT USAGE, SELECT on all current and future sequences
                             In case used with deploy command the following will be applied:
-                            GRANT SELECT, INSERT, UPDATE, DELETE on all current tables
+                            GRANT USAGE on the schema
                             GRANT EXECUTE on all current functions
-                            GRANT USAGE, SELECT on all current sequences
   -m <mode>, --mode <mode>  Deployment mode. Can be:
                             * safe. Add constraints to deployment. Will not deploy schema
                             if it already exists in the DB
@@ -95,7 +94,7 @@ import pkg_resources
 
 from collections import OrderedDict
 
-from pgpm.utils import config, vcs
+from pgpm.utils import config, vcs, db
 
 from pgpm import _version, _variables
 from docopt import docopt
@@ -111,7 +110,8 @@ GRANT_USAGE_INSTALL_PRIVILEGES = "GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TA
                                  "GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA {0} TO {1};" \
                                  "GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA {0} TO {1};"
 
-GRANT_USAGE_PRIVILEGES = "GRANT USAGE ON SCHEMA {0} TO {1}"
+GRANT_USAGE_PRIVILEGES = "GRANT USAGE ON SCHEMA {0} TO {1};" \
+                         "GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA {0} TO {1};"
 
 # getting logging
 logger = logging.getLogger(__name__)
@@ -122,7 +122,8 @@ def connect_db(connection_string):
     Connect to DB or exit on exception
     """
     logger.info('Connecting to databases for deployment...')
-    conn = psycopg2.connect(connection_string)
+    conn = psycopg2.connect(connection_string, connection_factory=db.MegaConnection)
+    conn.init(logger)
     cur = conn.cursor()
     logger.info('Connected to {0}'.format(connection_string))
 

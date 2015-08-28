@@ -13,6 +13,7 @@ $BODY$
 --
 ---
 DECLARE
+    l_schema TEXT;
     l_functions TEXT;
     l_tables TEXT;
     l_sequences TEXT;
@@ -22,6 +23,13 @@ DECLARE
     l_types TEXT;
 
 BEGIN
+
+    l_schema := 'ALTER SCHEMA '
+                || quote_ident(p_schema)
+                || ' OWNER TO '
+                || quote_ident(p_owner)
+                || ';';
+
     SELECT string_agg('ALTER FUNCTION '
                 || quote_ident(n.nspname) || '.'
                 || quote_ident(p.proname) || '('
@@ -78,7 +86,7 @@ BEGIN
         l_types := '';
     END IF;
 
-    EXECUTE l_functions || l_tables || l_sequences || l_views || l_domains || l_triggers || l_types;
+    EXECUTE l_schema || l_functions || l_tables || l_sequences || l_views || l_domains || l_triggers || l_types;
 
 END;
 $BODY$
