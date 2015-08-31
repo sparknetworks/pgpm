@@ -91,6 +91,7 @@ import sys
 import io
 import pkgutil
 import pkg_resources
+import emoji
 
 from collections import OrderedDict
 

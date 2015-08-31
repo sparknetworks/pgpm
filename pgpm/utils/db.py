@@ -8,7 +8,7 @@ class MegaConnection(psycopg2.extensions.connection):
     A connection that uses `MegaCursor` automatically.
     """
     def __init__(self, dsn, *more):
-        super().__init__(dsn, *more)
+        psycopg2.extensions.connection.__init__(self, dsn, *more)
         self._last_notice_flushed_index = -1
         self.logger = logging.getLogger(__name__)
 
@@ -34,7 +34,7 @@ class MegaConnection(psycopg2.extensions.connection):
 
 class MegaCursor(psycopg2.extensions.cursor):
     def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+        psycopg2.extensions.cursor.__init__(self, *args, **kwargs)
         if self.connection.__class__.__name__ != 'MegaConnection':
             raise self.connection.ProgrammingError(
                 'MegaCursor can only be used with MegaConnection. Instead type "{0}" is used. '
