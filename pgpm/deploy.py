@@ -558,7 +558,6 @@ def deployment_manager(arguments):
     # Prepare and execute preamble
     _deployment_script_preamble = pkgutil.get_data('pgpm', 'scripts/deploy_prepare_config.sql')
     logger.info('Executing a preamble to deployment statement')
-    logger.debug(_deployment_script_preamble)
     cur.execute(_deployment_script_preamble)
 
     # Get schema name from project configuration
@@ -629,7 +628,6 @@ def deployment_manager(arguments):
     if len(type_scripts_dict) > 0:
         types_script = '\n'.join([''.join(value) for key, value in type_scripts_dict.items()])
         type_drop_scripts, type_ordered_scripts, type_unordered_scripts = reorder_types(types_script)
-        logger.debug(type_ordered_scripts)
         if type_drop_scripts:
             cur.execute('\n'.join(type_drop_scripts))
         if type_ordered_scripts:
@@ -669,7 +667,6 @@ def deployment_manager(arguments):
     # Executing functions
     if len(function_scripts_dict) > 0:
         logger.info('Running functions definitions scripts')
-        logger.debug(function_scripts_dict)
         for key, value in function_scripts_dict.items():
             if value:
                 cur.execute(value)
@@ -680,7 +677,6 @@ def deployment_manager(arguments):
     # Executing views
     if len(view_scripts_dict) > 0:
         logger.info('Running views definitions scripts')
-        logger.debug(view_scripts_dict)
         for key, value in view_scripts_dict.items():
             if value:
                 cur.execute(value)
@@ -691,7 +687,6 @@ def deployment_manager(arguments):
     # Executing triggers
     if len(trigger_scripts_dict) > 0:
         logger.info('Running trigger definitions scripts')
-        logger.debug(trigger_scripts_dict)
         for key, value in trigger_scripts_dict.items():
             if value:
                 cur.execute(value)
