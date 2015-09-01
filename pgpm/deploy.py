@@ -12,8 +12,11 @@ Usage:
                 [--full-path] [--debug-mode]
                 [--vcs-ref <vcs_reference>] [--vcs-link <vcs_link>]
                 [--issue-ref <issue_reference>] [--issue-link <issue_link>] [--compare-table-scripts-as-int]
+                [--log-file <log_file_name>]
   pgpm remove <connection_string> --pkg-name <schema_name> <v_major> <v_minor> <v_patch> <v_pre> [--old-rev <old_rev>]
+                [--log-file <log_file_name>]
   pgpm install <connection_string> [--update|--upgrade] [--debug-mode] [-u | --user <user_role>...]
+                [--log-file <log_file_name>]
   pgpm uninstall <connection_string>
   pgpm -h | --help
   pgpm -v | --version
@@ -25,6 +28,7 @@ Arguments:
   <v_minor>                 Minor part of version of package
   <v_patch>                 Patch part of version of package
   <v_pre>                   Pre part of version of package
+  <log_file_name>           Filename for logs
 
 Options:
   -h --help                 Show this screen.
@@ -77,29 +81,29 @@ Options:
                             Flag says that when table scripts are running they should be ordered
                             but first their names are to be converted to int.
                             By default scripts are ordered by string comparison
+  --log-file <log_file_name>
+                            Log into a specified file. If not specified, logs are ignored
 
 
 """
 import logging
-
 import os
-import psycopg2
 import json
-import sqlparse
 import re
 import sys
 import io
 import pkgutil
-import pkg_resources
-import emoji
-
 from collections import OrderedDict
-
-from pgpm.utils import config, vcs, db
-
-from pgpm import _version, _variables
-from docopt import docopt
 from distutils import version
+
+import psycopg2
+import sqlparse
+import pkg_resources
+from docopt import docopt
+
+from pgpm.utils import config, vcs
+from pgpm.lib import db
+from pgpm import _version, settings
 
 SET_SEARCH_PATH = "SET search_path TO {0}, public;"
 GRANT_DEFAULT_USAGE_INSTALL_PRIVILEGES = "ALTER DEFAULT PRIVILEGES IN SCHEMA {0} " \
@@ -176,7 +180,7 @@ def alter_schema_privileges(cur, schema_name, users, owner, process='deployment'
             logger.info('User(s) {0} was (were) granted full usage permissions on schema {1}.'
                         .format(", ".join(users), schema_name))
     if owner:
-        cur.execute(SET_SEARCH_PATH.format(_variables.PGPM_SCHEMA_NAME))
+        cur.execute(SET_SEARCH_PATH.format(settings.PGPM_SCHEMA_NAME))
         cur.callproc('_alter_schema_owner', [schema_name, owner])
         logger.info('Ownership of schema {0} and all its objects was changed and granted to user {1}.'
                     .format(schema_name, owner))
@@ -187,57 +191,6 @@ def find_whole_word(w):
     Finds whole word
     """
     return re.compile(r'\b({0})\b'.format(w), flags=re.IGNORECASE).search
-
-
-def collect_scripts_from_files(script_paths, files_deployment, is_package=False, is_full_path=False, sort=True):
-    """
-    Collects postgres scripts from source files
-    """
-    scripts_dict = {}
-    if script_paths:
-        if not isinstance(script_paths, list):
-            script_paths = [script_paths]
-        if files_deployment:  # if specific script to be deployed, only find them
-            if is_full_path:
-                for list_file_name in files_deployment:
-                    if os.path.isfile(list_file_name):
-                        for i in range(len(script_paths)):
-                            if script_paths[i] in list_file_name:
-                                scripts_dict[list_file_name] = io.open(list_file_name, 'r', -1, 'utf-8-sig').read()
-                                logger.info('{0}'.format(list_file_name))
-                    else:
-                        logger.warning('File {0} does not exist, please specify a correct path'
-                                       .format(list_file_name))
-            else:
-                for script_path in script_paths:
-                    for subdir, dirs, files in os.walk(script_path):
-                        logger.debug('{0} {1}'.format(subdir, dirs))
-                        for file_info in files:
-                            for list_file_name in files_deployment:
-                                if file_info == list_file_name:
-                                    scripts_dict[list_file_name] = io.open(os.path.join(subdir, file_info),
-                                                                           'r', -1, 'utf-8-sig').read()
-                                    logger.info('{0}'.format(os.path.join(subdir, file_info)))
-        else:
-            if is_package:
-                for script_path in script_paths:
-                    logger.debug('{0}'.format(script_path))
-                    for file_info in pkg_resources.resource_listdir(__name__, script_path):
-                        scripts_dict[file_info] = pkg_resources.resource_string(__name__, '{0}/{1}'
-                                                                                .format(script_path, file_info))\
-                            .decode('utf-8')
-                        logger.info('{0}/{1}'.format(script_path, file_info))
-            else:
-                for script_path in script_paths:
-                    for subdir, dirs, files in os.walk(script_path):
-                        logger.debug('{0} {1}'.format(subdir, dirs))
-                        files = sorted(files)
-                        for file_info in files:
-                            if file_info != _variables.CONFIG_FILE_NAME:
-                                scripts_dict[file_info] = io.open(os.path.join(subdir, file_info),
-                                                                  'r', -1, 'utf-8-sig').read()
-                                logger.info('{0}'.format(os.path.join(subdir, file_info)))
-    return scripts_dict
 
 
 def get_scripts(path_parameter, config_data, files_deployment, script_type, is_full_path=False):
@@ -333,9 +286,9 @@ def resolve_dependencies(cur, dependencies):
     _list_of_deps_unresolved = []
     _is_deps_resolved = True
     for k, v in dependencies.items():
-        cur.execute(SET_SEARCH_PATH.format(_variables.PGPM_SCHEMA_NAME))
+        cur.execute(SET_SEARCH_PATH.format(settings.PGPM_SCHEMA_NAME))
         cur.execute("SELECT {0}._find_schema('{1}', '{2}')"
-                    .format(_variables.PGPM_SCHEMA_NAME, k, v))
+                    .format(settings.PGPM_SCHEMA_NAME, k, v))
         pgpm_v_ext = tuple(cur.fetchone()[0][1:-1].split(','))
         try:
             list_of_deps_ids.append(int(pgpm_v_ext[0]))
@@ -346,117 +299,6 @@ def resolve_dependencies(cur, dependencies):
             _list_of_deps_unresolved.append("{0}: {1}".format(k, v))
 
     return _is_deps_resolved, list_of_deps_ids, _list_of_deps_unresolved
-
-
-def install_manager(arguments):
-    """
-    Installs package manager
-    """
-    conn, cur = connect_db(arguments['<connection_string>'])
-
-    # get pgpm functions
-    scripts_dict = collect_scripts_from_files('scripts/functions', False, True, True)
-
-    # get current user
-    cur.execute("select * from CURRENT_USER;")
-    current_user = cur.fetchone()[0]
-
-    # check if current user is a super user
-    cur.execute("select usesuper from pg_user where usename = CURRENT_USER;")
-    is_cur_superuser = cur.fetchone()[0]
-    if not is_cur_superuser:
-        logger.warning('User {0} is not a superuser. It is recommended that you connect as superuser '
-                       'when installing pgpm as some operation might need superuser rights'.format(current_user))
-
-    # Create schema if it doesn't exist
-    if schema_exists(cur, _variables.PGPM_SCHEMA_NAME):
-        # Executing pgpm functions
-        if len(scripts_dict) > 0:
-            logger.info('Running functions definitions scripts')
-            logger.debug(scripts_dict)
-            cur.execute(SET_SEARCH_PATH.format(_variables.PGPM_SCHEMA_NAME))
-            for key, value in scripts_dict.items():
-                if value:
-                    cur.execute(value)
-            logger.info('Functions loaded to schema {0}'.format(_variables.PGPM_SCHEMA_NAME))
-        else:
-            logger.info('No function scripts to deploy')
-
-        conn.commit()
-
-        # check installed version of _pgpm schema.
-        pgpm_v_db_tuple = _get_pgpm_installed_v(cur)
-        pgpm_v_db = version.StrictVersion(".".join(pgpm_v_db_tuple))
-        pgpm_v_script = version.StrictVersion(_version.__version__)
-        if pgpm_v_script > pgpm_v_db:
-            if arguments['--update'] or arguments['--upgrade']:
-                _migrate_pgpm_version(cur, conn, arguments['<connection_string>'], True)
-            else:
-                _migrate_pgpm_version(cur, conn, arguments['<connection_string>'], False)
-        elif pgpm_v_script < pgpm_v_db:
-            logger.error('Deployment script\'s version is lower than the version of {0} schema '
-                         'installed in DB. Update pgpm script first.'.format(_variables.PGPM_SCHEMA_NAME))
-            close_db_conn(cur, conn, arguments['<connection_string>'])
-            sys.exit(1)
-        else:
-            logger.error('Can\'t install pgpm as schema {0} already exists'.format(_variables.PGPM_SCHEMA_NAME))
-            close_db_conn(cur, conn, arguments['<connection_string>'])
-            sys.exit(1)
-    else:
-        # Prepare and execute preamble
-        _deployment_script_preamble = pkgutil.get_data('pgpm', 'scripts/deploy_prepare_config.sql')
-        logger.info('Executing a preamble to install statement')
-        cur.execute(_deployment_script_preamble)
-
-        # Python 3.x doesn't have format for byte strings so we have to convert
-        _install_script = pkgutil.get_data('pgpm', 'scripts/install.tmpl.sql').decode('utf-8')
-        logger.info('Installing package manager')
-        cur.execute(_install_script.format(schema_name=_variables.PGPM_SCHEMA_NAME))
-        migration_files_list = sorted(pkg_resources.resource_listdir(__name__, 'scripts/migrations/'),
-                                      key=lambda filename: version.StrictVersion(filename.split('-')[0]))
-        # Executing pgpm functions
-        if len(scripts_dict) > 0:
-            logger.info('Running functions definitions scripts')
-            logger.debug(scripts_dict)
-            cur.execute(SET_SEARCH_PATH.format(_variables.PGPM_SCHEMA_NAME))
-            for key, value in scripts_dict.items():
-                cur.execute(value)
-            logger.info('Functions loaded to schema {0}'.format(_variables.PGPM_SCHEMA_NAME))
-        else:
-            logger.info('No function scripts to deploy')
-
-        # Executing migration scripts after as they contain triggers that trigger functions that were created on top
-        for file_info in migration_files_list:
-            # Python 3.x doesn't have format for byte strings so we have to convert
-            migration_script = pkg_resources.resource_string(__name__, 'scripts/migrations/{0}'.format(file_info))\
-                .decode('utf-8').format(schema_name=_variables.PGPM_SCHEMA_NAME)
-            logger.info('Running version upgrade script {0}'.format(file_info))
-            logger.debug(migration_script)
-            cur.execute(migration_script)
-
-        conn.commit()
-
-    # check if users of pgpm are specified
-    user_roles = arguments['--user']
-    if not user_roles:
-        logger.warning('No user was specified to have permisions on _pgpm schema. '
-                       'This means only user that installed _pgpm will be able to deploy. '
-                       'We recommend adding more users.')
-    else:
-        # set default privilages to users
-        cur.execute(GRANT_DEFAULT_USAGE_INSTALL_PRIVILEGES.format(_variables.PGPM_SCHEMA_NAME, ', '.join(user_roles)))
-        cur.execute(GRANT_USAGE_INSTALL_PRIVILEGES.format(_variables.PGPM_SCHEMA_NAME, ', '.join(user_roles)))
-
-    cur.execute(SET_SEARCH_PATH.format(_variables.PGPM_SCHEMA_NAME))
-    cur.callproc('{0}._upsert_package_info'.format(_variables.PGPM_SCHEMA_NAME),
-                 [_variables.PGPM_SCHEMA_NAME, _variables.PGPM_SCHEMA_SUBCLASS,
-                  _variables.PGPM_VERSION.major, _variables.PGPM_VERSION.minor, _variables.PGPM_VERSION.patch,
-                  _variables.PGPM_VERSION.pre, _variables.PGPM_VERSION.metadata,
-                  'Package manager for Postgres', 'MIT'])
-    # Commit transaction
-    conn.commit()
-
-    close_db_conn(cur, conn, arguments['<connection_string>'])
 
 
 def deployment_manager(arguments):
@@ -476,7 +318,7 @@ def deployment_manager(arguments):
 
     # Load project configuration file
     logger.info('Loading project configuration...')
-    config_json = open(_variables.CONFIG_FILE_NAME)
+    config_json = open(settings.CONFIG_FILE_NAME)
     config_data = json.load(config_json)
     config_json.close()
     if arguments['--add-config']:
@@ -526,7 +368,7 @@ def deployment_manager(arguments):
     # Connect to DB
     conn, cur = connect_db(arguments['<connection_string>'])
     # Check if DB is pgpm enabled
-    if not schema_exists(cur, _variables.PGPM_SCHEMA_NAME):
+    if not schema_exists(cur, settings.PGPM_SCHEMA_NAME):
         logger.error('Can\'t deploy schemas to DB where pgpm was not installed. '
                      'First install pgpm by running pgpm install')
         close_db_conn(cur, conn, arguments['<connection_string>'])
@@ -540,7 +382,7 @@ def deployment_manager(arguments):
         _migrate_pgpm_version(cur, conn, arguments['<connection_string>'], False)
     elif pgpm_v_script < pgpm_v_db:
         logger.error('Deployment script\'s version is lower than the version of {0} schema '
-                     'installed in DB. Update pgpm script first.'.format(_variables.PGPM_SCHEMA_NAME))
+                     'installed in DB. Update pgpm script first.'.format(settings.PGPM_SCHEMA_NAME))
         close_db_conn(cur, conn, arguments['<connection_string>'])
         sys.exit(1)
 
@@ -607,8 +449,8 @@ def deployment_manager(arguments):
             _rename_schema_script = "ALTER SCHEMA {0} RENAME TO {1};\n".format(schema_name, _old_schema_name)
             cur.execute(_rename_schema_script)
             # Add metadata to pgpm schema
-            cur.execute(SET_SEARCH_PATH.format(_variables.PGPM_SCHEMA_NAME))
-            cur.callproc('{0}._set_revision_package'.format(_variables.PGPM_SCHEMA_NAME),
+            cur.execute(SET_SEARCH_PATH.format(settings.PGPM_SCHEMA_NAME))
+            cur.callproc('{0}._set_revision_package'.format(settings.PGPM_SCHEMA_NAME),
                          [config_obj.name,
                           config_obj.subclass,
                           _old_schema_rev,
@@ -617,7 +459,7 @@ def deployment_manager(arguments):
                           config_obj.version.patch,
                           config_obj.version.pre])
             logger.info('Schema {0} was renamed to {1}. Meta info was added to {2} schema'
-                        .format(schema_name, _old_schema_name, _variables.PGPM_SCHEMA_NAME))
+                        .format(schema_name, _old_schema_name, settings.PGPM_SCHEMA_NAME))
             create_db_schema(cur, schema_name)
         elif arguments['--mode'][0] == 'unsafe':
             _drop_schema_script = "DROP SCHEMA {0} CASCADE;\n".format(schema_name)
@@ -651,8 +493,8 @@ def deployment_manager(arguments):
 
         logger.info('Running Table DDL scripts')
         for key, value in sorted_table_scripts_dict.items():
-            cur.execute(SET_SEARCH_PATH.format(_variables.PGPM_SCHEMA_NAME))
-            cur.callproc('{0}._is_table_ddl_executed'.format(_variables.PGPM_SCHEMA_NAME), [key])
+            cur.execute(SET_SEARCH_PATH.format(settings.PGPM_SCHEMA_NAME))
+            cur.callproc('{0}._is_table_ddl_executed'.format(settings.PGPM_SCHEMA_NAME), [key])
             is_table_executed = cur.fetchone()[0]
             if (not is_table_executed) and value:
                 cur.execute(value)
@@ -700,8 +542,8 @@ def deployment_manager(arguments):
         alter_schema_privileges(cur, schema_name, user_roles, owner_role)
 
     # Add metadata to pgpm schema
-    cur.execute(SET_SEARCH_PATH.format(_variables.PGPM_SCHEMA_NAME))
-    cur.callproc('{0}._upsert_package_info'.format(_variables.PGPM_SCHEMA_NAME),
+    cur.execute(SET_SEARCH_PATH.format(settings.PGPM_SCHEMA_NAME))
+    cur.callproc('{0}._upsert_package_info'.format(settings.PGPM_SCHEMA_NAME),
                  [config_obj.name,
                   config_obj.subclass,
                   config_obj.version.major,
@@ -717,11 +559,11 @@ def deployment_manager(arguments):
                   issue_ref,
                   issue_link])
     logger.info('Meta info about deployment was added to schema {0}'
-                .format(_variables.PGPM_SCHEMA_NAME))
+                .format(settings.PGPM_SCHEMA_NAME))
     pgpm_package_id = cur.fetchone()[0]
     if len(table_scripts_dict) > 0:
         for key in executed_table_scripts:
-            cur.callproc('{0}._log_table_evolution'.format(_variables.PGPM_SCHEMA_NAME), [key, pgpm_package_id])
+            cur.callproc('{0}._log_table_evolution'.format(settings.PGPM_SCHEMA_NAME), [key, pgpm_package_id])
 
     # Commit transaction
     conn.commit()
@@ -734,9 +576,9 @@ def _get_pgpm_installed_v(cur):
     returns current version of pgpm schema
     :return:
     """
-    cur.execute(SET_SEARCH_PATH.format(_variables.PGPM_SCHEMA_NAME))
+    cur.execute(SET_SEARCH_PATH.format(settings.PGPM_SCHEMA_NAME))
     cur.execute("SELECT {0}._find_schema('{1}', '{2}')"
-                .format(_variables.PGPM_SCHEMA_NAME, _variables.PGPM_SCHEMA_NAME, 'x'))
+                .format(settings.PGPM_SCHEMA_NAME, settings.PGPM_SCHEMA_NAME, 'x'))
     pgpm_v_ext = tuple(cur.fetchone()[0][1:-1].split(','))
 
     return pgpm_v_ext[2], pgpm_v_ext[3], pgpm_v_ext[4]
@@ -762,14 +604,14 @@ def _migrate_pgpm_version(cur, conn, connection_string, migrate_or_leave):
         if version_pgpm_script >= version_a and version_b > version_pgpm_db:
             # Python 3.x doesn't have format for byte strings so we have to convert
             migration_script = pkg_resources.resource_string(__name__, 'scripts/migrations/{0}'.format(file_info))\
-                .decode('utf-8').format(schema_name=_variables.PGPM_SCHEMA_NAME)
+                .decode('utf-8').format(schema_name=settings.PGPM_SCHEMA_NAME)
             if migrate_or_leave:
                 logger.info('Running version upgrade script {0}'.format(file_info))
                 logger.debug(migration_script)
                 cur.execute(migration_script)
                 conn.commit()
-                cur.execute(SET_SEARCH_PATH.format(_variables.PGPM_SCHEMA_NAME))
-                cur.callproc('{0}._add_migration_info'.format(_variables.PGPM_SCHEMA_NAME),
+                cur.execute(SET_SEARCH_PATH.format(settings.PGPM_SCHEMA_NAME))
+                cur.callproc('{0}._add_migration_info'.format(settings.PGPM_SCHEMA_NAME),
                              [versions_list[0][0], versions_list[0][1]])
                 conn.commit()
                 logger.info('Successfully finished running version upgrade script {0}'
@@ -777,7 +619,7 @@ def _migrate_pgpm_version(cur, conn, connection_string, migrate_or_leave):
 
     if not migrate_or_leave:
         logger.error('{0} schema version is outdated. Please run pgpm install --upgrade first.'
-                     .format(_variables.PGPM_SCHEMA_NAME))
+                     .format(settings.PGPM_SCHEMA_NAME))
         close_db_conn(cur, conn, connection_string)
         sys.exit(1)
 
@@ -786,16 +628,17 @@ def main():
     arguments = docopt(__doc__, version=_version.__version__)
 
     # setting logging
-    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    formatter = logging.Formatter(settings.LOGGING_FORMATTER)
     if arguments['--debug-mode']:
         logger_level = logging.DEBUG
     else:
         logger_level = logging.INFO
     logger.setLevel(logger_level)
-    handler = logging.StreamHandler()
-    handler.setLevel(logger_level)
-    handler.setFormatter(formatter)
-    logger.addHandler(handler)
+    if arguments['--log-file']:
+        handler = logging.FileHandler(arguments['--log-file'])
+        handler.setLevel(logger_level)
+        handler.setFormatter(formatter)
+        logger.addHandler(handler)
 
     if arguments['install']:
         install_manager(arguments)
