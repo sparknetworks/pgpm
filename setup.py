@@ -15,7 +15,7 @@ def get_version():
     parse __init__.py for version number instead of importing the file
     see http://stackoverflow.com/questions/458550/standard-way-to-embed-version-into-python-package
     """
-    version_file = os.path.join(PKG, '_version.py')
+    version_file = os.path.join(PKG, 'lib/_version.py')
     ver_str_line = open(version_file, "rt").read()
     version_regex = r'^__version__ = [\'"]([^\'"]*)[\'"]'
     mo = re.search(version_regex, ver_str_line, re.M)
