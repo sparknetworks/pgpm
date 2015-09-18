@@ -74,7 +74,7 @@ setup(
         'Topic :: Database'
     ],
     tests_require=[
-        'pytest',
+        'pytest', 'pytest-bdd'
     ],
     cmdclass={
         'test': PyTestCommand,
