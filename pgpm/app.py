@@ -24,11 +24,6 @@ Usage:
 Arguments:
   <connection_string>       Connection string to postgres database.
                             Can be in any format psycopg2 would understand it
-  <v_major>                 Major part of version of package
-  <v_minor>                 Minor part of version of package
-  <v_patch>                 Patch part of version of package
-  <v_pre>                   Pre part of version of package
-  <log_file_name>           Filename for logs
 
 Options:
   -h --help                 Show this screen.
@@ -60,10 +55,10 @@ Options:
                             * moderate. If schema exists, will try to rename it by adding suffix "_"
                             and deploy new schema with old name
                             * unsafe. allows cascade deleting of schema if it exists and adding new one
-                            [default: safe]
                             * overwrite. Will run scripts overwriting existing ones.
                             User have to make sure that overwriting is possible.
                             E.g. if type exists, rewriting should be preceeded with dropping it first manually
+                            [default: safe]
   --add-config <config_file_path>
                             Provides path to additional config file. Attributes of this file overwrite config.json
   --debug-mode              Debug level loggin enabled if command is present. Otherwise Info level
@@ -117,14 +112,17 @@ def main():
         logger.addHandler(handler)
 
     if arguments['install']:
-        installation_manager = pgpm.lib.install.InstallationManager(arguments['connection_string'], '_pgpm', 'basic',
+        installation_manager = pgpm.lib.install.InstallationManager(arguments['<connection_string>'], '_pgpm', 'basic',
                                                                     logger)
         installation_manager.install_pgpm_to_db(arguments['--user'], arguments['upgrade'])
     elif arguments['deploy']:
         deployment_manager = pgpm.lib.deploy.DeploymentManager(
-            arguments['connection_string'], os.path.abspath('.'), os.path.abspath('.' + settings.CONFIG_FILE_NAME),
+            arguments['<connection_string>'], os.path.abspath('.'), os.path.abspath(settings.CONFIG_FILE_NAME),
             pgpm_schema_name='_pgpm', logger=logger)
-        deployment_manager.deploy_schema_to_db(config, arguments['--user'], arguments['upgrade'])
+        deployment_manager.deploy_schema_to_db(mode=arguments['--mode'], files_deployment=arguments['--file'],
+                                               vcs_ref=arguments['--vcs-ref'], vcs_link=arguments['--vcs-link'],
+                                               issue_ref=arguments['--issue-ref'], issue_link=arguments['--issue-link'],
+                                               compare_table_scripts_as_int=arguments['--compare-table-scripts-as-int'])
     else:
         print(arguments)
 
