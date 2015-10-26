@@ -10,12 +10,35 @@ from setuptools import setup
 from setuptools.command.test import test as TestCommand
 
 
+class Tox(TestCommand):
+    user_options = [('tox-args=', 'a', "Arguments to pass to tox")]
+
+    def initialize_options(self):
+        TestCommand.initialize_options(self)
+        self.tox_args = None
+
+    def finalize_options(self):
+        TestCommand.finalize_options(self)
+        self.test_args = []
+        self.test_suite = True
+
+    def run_tests(self):
+        # import here, cause outside the eggs aren't loaded
+        import tox
+        import shlex
+        args = self.tox_args
+        if args:
+            args = shlex.split(self.tox_args)
+        errno = tox.cmdline(args=args)
+        sys.exit(errno)
+
+
 def get_version():
     """
     parse __init__.py for version number instead of importing the file
     see http://stackoverflow.com/questions/458550/standard-way-to-embed-version-into-python-package
     """
-    version_file = os.path.join(PKG, 'lib/_version.py')
+    version_file = os.path.join(PKG, 'lib/version.py')
     ver_str_line = open(version_file, "rt").read()
     version_regex = r'^__version__ = [\'"]([^\'"]*)[\'"]'
     mo = re.search(version_regex, ver_str_line, re.M)
@@ -30,23 +53,6 @@ PKG = "pgpm"
 
 VERSION = get_version()
 
-
-class PyTestCommand(TestCommand):
-    """ Command to run unit py.test unit tests
-    """
-
-    def finalize_options(self):
-        TestCommand.finalize_options(self)
-        self.test_args = []
-        self.test_suite = True
-
-    def run(self):
-        import pytest
-
-        rcode = pytest.main(self.test_args)
-        sys.exit(rcode)
-
-
 setup(
     name='pgpm',
     version=VERSION,
@@ -56,9 +62,9 @@ setup(
     license='MIT',
     keywords='postgres database package deploying',
     url='https://github.com/affinitas/pgpm',
-    packages=['pgpm', 'pgpm.utils'],
+    packages=['pgpm', 'pgpm.utils', 'pgpm.lib', 'pgpm.lib.utils'],
     long_description=open('README.rst').read(),
-    install_requires=['docopt', 'psycopg2', 'sqlparse', 'OrderedDict', 'emoji'],
+    install_requires=['docopt', 'psycopg2', 'sqlparse', 'emoji'],
     classifiers=[
         'Development Status :: 3 - Alpha',
         'Environment :: Console',
@@ -74,14 +80,14 @@ setup(
         'Topic :: Database'
     ],
     tests_require=[
-        'pytest', 'pytest-bdd'
+        'tox'
     ],
     cmdclass={
-        'test': PyTestCommand,
+        'test': Tox,
     },
     entry_points={
         'console_scripts': [
-            'pgpm=pgpm.deploy:main',
+            'pgpm=pgpm.app:main',
         ],
     },
     package_data={

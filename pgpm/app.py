@@ -119,7 +119,7 @@ def main():
         deployment_manager = pgpm.lib.deploy.DeploymentManager(
             arguments['<connection_string>'], os.path.abspath('.'), os.path.abspath(settings.CONFIG_FILE_NAME),
             pgpm_schema_name='_pgpm', logger=logger)
-        deployment_manager.deploy_schema_to_db(mode=arguments['--mode'], files_deployment=arguments['--file'],
+        deployment_manager.deploy_schema_to_db(mode=arguments['--mode'][0], files_deployment=arguments['--file'],
                                                vcs_ref=arguments['--vcs-ref'], vcs_link=arguments['--vcs-link'],
                                                issue_ref=arguments['--issue-ref'], issue_link=arguments['--issue-link'],
                                                compare_table_scripts_as_int=arguments['--compare-table-scripts-as-int'])
