@@ -20,3 +20,7 @@ def test_get_git_revision_hash(vcs_dirs):
     assert pgpm.lib.utils.vcs.get_git_revision_hash(vcs_dirs[0])
     with pytest.raises(subprocess.CalledProcessError):
         assert pgpm.lib.utils.vcs.get_git_revision_hash(vcs_dirs[1])
+
+
+def test_find_whole_word():
+    assert pgpm.lib.utils.find_whole_word("test")("Nothing")
