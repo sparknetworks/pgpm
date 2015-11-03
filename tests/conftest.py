@@ -1,1 +1,2 @@
-from tests.fixtures.utils_fixtures import vcs_dirs
+from tests.fixtures.fixtures import vcs_dirs
+from tests.fixtures.fixtures import installation_manager

@@ -114,7 +114,7 @@ def main():
     if arguments['install']:
         installation_manager = pgpm.lib.install.InstallationManager(arguments['<connection_string>'], '_pgpm', 'basic',
                                                                     logger)
-        installation_manager.install_pgpm_to_db(arguments['--user'], arguments['upgrade'])
+        installation_manager.install_pgpm_to_db(arguments['--user'], arguments['--upgrade'])
     elif arguments['deploy']:
         deployment_manager = pgpm.lib.deploy.DeploymentManager(
             arguments['<connection_string>'], os.path.abspath('.'), os.path.abspath(settings.CONFIG_FILE_NAME),

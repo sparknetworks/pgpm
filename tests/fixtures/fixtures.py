@@ -5,6 +5,8 @@ import pytest
 import shutil
 import subprocess
 
+import pgpm.lib.install
+
 import tests.conftest
 
 TEST_DIR_GIT_NAME = "test_dir_git"
@@ -30,3 +32,12 @@ def vcs_dirs(request):
     return git_dir_path, no_git_dir_path
 
 
+@pytest.fixture(scope="module")
+def installation_manager():
+    im_instance = pgpm.lib.install.InstallationManager("host={0} port={1} dbname={2} user={3} password={4}"
+                                                                .format(os.environ['PGPM_TEST_DB_HOST'],
+                                                                        os.environ['PGPM_TEST_DB_PORT'],
+                                                                        os.environ['PGPM_TEST_DB_NAME'],
+                                                                        os.environ['PGPM_TEST_USER_NAME'],
+                                                                        os.environ['PGPM_TEST_USER_PASSWORD']))
+    return im_instance
