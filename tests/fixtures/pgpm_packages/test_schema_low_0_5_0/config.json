@@ -1,6 +1,6 @@
 {
     "description"       : "Test schema to test pgpm that is a dependency for other schemas",
-    "name"              : "low_package",
+    "name"              : "test_schema_low",
     "class"             : "postgres_sql",
     "subclass"          : "versioned",
     "version"           : "00_05_00",
