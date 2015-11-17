@@ -8,8 +8,7 @@ Copyright (c) Affinitas GmbH
 Usage:
   pgpm deploy <connection_string> [-m | --mode <mode>]
                 [-o | --owner <owner_role>] [-u | --user <user_role>...]
-                [-f <file_name>...] [--add-config <config_file_path>]
-                [--full-path] [--debug-mode]
+                [-f <file_name>...] [--add-config <config_file_path>] [--debug-mode]
                 [--vcs-ref <vcs_reference>] [--vcs-link <vcs_link>]
                 [--issue-ref <issue_reference>] [--issue-link <issue_link>] [--compare-table-scripts-as-int]
                 [--log-file <log_file_name>]
@@ -32,7 +31,6 @@ Options:
                             Use it if you want to deploy only specific files (functions, types, etc).
                             In that case these files if exist will be overridden.
                             Should be followed by the list of names of files to deploy.
-  --full-path               By file deployment will take <file_name> as full relative path and only as file name
   -o <owner_role>, --owner <owner_role>
                             Role to which schema owner and all objects inside will be changed. User connecting to DB
                             needs to be a superuser. If omitted, user running the script

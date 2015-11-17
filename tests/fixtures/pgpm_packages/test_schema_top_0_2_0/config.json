@@ -7,6 +7,6 @@
     "functions_path"    : ".",
     "users"             : [ "public" ],
     "dependencies"      : {
-        "low_package" : ">0_4"
+        "test_schema_low" : ">0_4"
     }
 }
