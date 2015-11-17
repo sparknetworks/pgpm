@@ -1,12 +1,12 @@
 {
     "description"       : "Test schema to test pgpm",
-    "name"              : "top_package",
+    "name"              : "test_schema_top",
     "class"             : "postgres_sql",
     "subclass"          : "versioned",
-    "version"           : "00_01_00",
+    "version"           : "00_02_00",
     "functions_path"    : ".",
     "users"             : [ "public" ],
     "dependencies"      : {
-        "low_package" : ">0_3_0"
+        "test_schema_low" : ">0_4"
     }
 }
