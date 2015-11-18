@@ -114,6 +114,7 @@ def main():
                                                                     logger)
         installation_manager.install_pgpm_to_db(arguments['--user'], arguments['--upgrade'])
     elif arguments['deploy']:
+        logger.info('Loading project configuration...')
         deployment_manager = pgpm.lib.deploy.DeploymentManager(
             arguments['<connection_string>'], os.path.abspath('.'), os.path.abspath(settings.CONFIG_FILE_NAME),
             pgpm_schema_name='_pgpm', logger=logger)
