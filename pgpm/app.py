@@ -83,10 +83,15 @@ import logging
 import os
 import pgpm.lib.install
 import pgpm.lib.deploy
+import sys
+import time
+import colorama
 
 from docopt import docopt
 
 from pgpm import settings
+
+from terminaltables import AsciiTable
 
 
 # getting logging
@@ -95,6 +100,7 @@ logger = logging.getLogger(__name__)
 
 def main():
     arguments = docopt(__doc__, version=settings.__version__)
+    colorama.init()
 
     # setting logging
     formatter = logging.Formatter(settings.LOGGING_FORMATTER)
@@ -110,11 +116,25 @@ def main():
         logger.addHandler(handler)
 
     if arguments['install']:
+        logger.info('Installing... {0}'.format(arguments['<connection_string>']))
+        sys.stdout.write('\033[2J\033[0;0H' + colorama.Fore.YELLOW + 'Installing...' + colorama.Fore.RESET +
+                         ' | ' + arguments['<connection_string>'])
+        sys.stdout.flush()
         installation_manager = pgpm.lib.install.InstallationManager(arguments['<connection_string>'], '_pgpm', 'basic',
                                                                     logger)
         installation_manager.install_pgpm_to_db(arguments['--user'], arguments['--upgrade'])
+        sys.stdout.write('\033[2K\r' + colorama.Fore.GREEN + 'Installed' + colorama.Fore.RESET +
+                         ' | ' + arguments['<connection_string>'])
+        sys.stdout.write('\n')
+        logger.info('Successfully installed {0}'.format(arguments['<connection_string>']))
     elif arguments['deploy']:
-        logger.info('Loading project configuration...')
+        deploying = 'Deploying...'
+        deployed = 'Deployed    '
+        logger.info('Deploying... {0}'.format(arguments['<connection_string>']))
+        sys.stdout.write('\033[2J\033[0;0H' + colorama.Fore.YELLOW + deploying + colorama.Fore.RESET +
+                         ' | ' + arguments['<connection_string>'])
+        sys.stdout.flush()
+
         deployment_manager = pgpm.lib.deploy.DeploymentManager(
             arguments['<connection_string>'], os.path.abspath('.'), os.path.abspath(settings.CONFIG_FILE_NAME),
             pgpm_schema_name='_pgpm', logger=logger)
@@ -122,6 +142,11 @@ def main():
                                                vcs_ref=arguments['--vcs-ref'], vcs_link=arguments['--vcs-link'],
                                                issue_ref=arguments['--issue-ref'], issue_link=arguments['--issue-link'],
                                                compare_table_scripts_as_int=arguments['--compare-table-scripts-as-int'])
+        sys.stdout.write('\033[2K\r' + colorama.Fore.GREEN + deployed + colorama.Fore.RESET +
+                         ' | ' + arguments['<connection_string>'])
+        sys.stdout.write('\n')
+        logger.info('Successfully deployed {0}'.format(arguments['<connection_string>']))
+
     else:
         print(arguments)
 
