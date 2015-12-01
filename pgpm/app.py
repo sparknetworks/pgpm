@@ -119,7 +119,12 @@ def main():
         logger_level = logging.INFO
     logger.setLevel(logger_level)
     if arguments['--log-file']:
-        handler = logging.FileHandler(arguments['--log-file'])
+        handler = logging.FileHandler(os.path.abspath(os.path.expanduser(arguments['--log-file'])))
+        handler.setLevel(logger_level)
+        handler.setFormatter(formatter)
+        logger.addHandler(handler)
+    else:
+        handler = logging.StreamHandler()
         handler.setLevel(logger_level)
         handler.setFormatter(formatter)
         logger.addHandler(handler)
