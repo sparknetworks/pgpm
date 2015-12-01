@@ -6,16 +6,16 @@ Deployment script that will deploy Postgres schemas to a given DB
 Copyright (c) Affinitas GmbH
 
 Usage:
-  pgpm deploy (<connection_string> | set <environment_name> <product_name>) [-m | --mode <mode>]
-                [-o | --owner <owner_role>] [-u | --user <user_role>...]
+  pgpm deploy (<connection_string> [-o | --owner <owner_role>] | set <environment_name> <product_name> (-o <owner_role>| --owner <owner_role>) ) [-m | --mode <mode>]
+                [-u | --user <user_role>...]
                 [-f <file_name>...] [--add-config <config_file_path>] [--debug-mode]
                 [--vcs-ref <vcs_reference>] [--vcs-link <vcs_link>]
                 [--issue-ref <issue_reference>] [--issue-link <issue_link>] [--compare-table-scripts-as-int]
                 [--log-file <log_file_name>] [--global-config <global_config_file_path>]
   pgpm remove <connection_string> --pkg-name <schema_name> <v_major> <v_minor> <v_patch> <v_pre> [--old-rev <old_rev>]
                 [--log-file <log_file_name>]
-  pgpm install (<connection_string> | set <environment_name> <product_name>) [--update|--upgrade] [--debug-mode] [-u | --user <user_role>...]
-                [--log-file <log_file_name>]
+  pgpm install (<connection_string> | set <environment_name> <product_name> (-o <owner_role>| --owner <owner_role>) ) [--update | --upgrade] [--debug-mode]
+                [-u | --user <user_role>...] [--log-file <log_file_name>] [--global-config <global_config_file_path>]
   pgpm uninstall <connection_string>
   pgpm list set <environment_name> <product_name>
                 [--log-file <log_file_name>] [--global-config <global_config_file_path>]
@@ -41,6 +41,7 @@ Options:
                             will be the owner of schema and all objects inside
                             If --mode flag is *overwrite* or --file flag is used then this is ignored
                             as no new schema is created
+                            During installation a mandatory parameter to install on behalf of the specified user
   -u <user_role>..., --user <user_role>...
                             Roles to which different usage privileges will be applied.
                             If omitted, default behaviour of DB applies
@@ -123,6 +124,7 @@ def main():
         handler.setFormatter(formatter)
         logger.addHandler(handler)
 
+    sys.stdout.write('\033[2J\033[0;0H')
     if arguments['install']:
         if arguments['set']:
             if arguments['<environment_name>'] and arguments['<product_name>']:
@@ -186,12 +188,21 @@ def main():
 
 def _install_schema(connection_string, user, upgrade):
     logger.info('Installing... {0}'.format(connection_string))
-    sys.stdout.write('\033[2J\033[0;0H' + colorama.Fore.YELLOW + 'Installing...' + colorama.Fore.RESET +
+    sys.stdout.write(colorama.Fore.YELLOW + 'Installing...' + colorama.Fore.RESET +
                      ' | ' + connection_string)
     sys.stdout.flush()
     installation_manager = pgpm.lib.install.InstallationManager(connection_string, '_pgpm', 'basic',
                                                                 logger)
-    installation_manager.install_pgpm_to_db(user, upgrade)
+    try:
+        installation_manager.install_pgpm_to_db(user, upgrade)
+    except:
+        print('\n')
+        print('Something went wrong, check the logs. Aborting')
+        print(sys.exc_info()[0])
+        print(sys.exc_info()[1])
+        print(sys.exc_info()[2])
+        raise
+
     sys.stdout.write('\033[2K\r' + colorama.Fore.GREEN + 'Installed' + colorama.Fore.RESET +
                      ' | ' + connection_string)
     sys.stdout.write('\n')
@@ -203,17 +214,26 @@ def _deploy_schema(connection_string, mode, files_deployment, vcs_ref, vcs_link,
     deploying = 'Deploying...'
     deployed = 'Deployed    '
     logger.info('Deploying... {0}'.format(connection_string))
-    sys.stdout.write('\033[2J\033[0;0H' + colorama.Fore.YELLOW + deploying + colorama.Fore.RESET +
+    sys.stdout.write(colorama.Fore.YELLOW + deploying + colorama.Fore.RESET +
                      ' | ' + connection_string)
     sys.stdout.flush()
 
     deployment_manager = pgpm.lib.deploy.DeploymentManager(
         connection_string, os.path.abspath('.'), os.path.abspath(settings.CONFIG_FILE_NAME),
         pgpm_schema_name='_pgpm', logger=logger)
-    deployment_manager.deploy_schema_to_db(mode=mode, files_deployment=files_deployment,
-                                           vcs_ref=vcs_ref, vcs_link=vcs_link,
-                                           issue_ref=issue_ref, issue_link=issue_link,
-                                           compare_table_scripts_as_int=compare_table_scripts_as_int)
+    try:
+        deployment_manager.deploy_schema_to_db(mode=mode, files_deployment=files_deployment,
+                                               vcs_ref=vcs_ref, vcs_link=vcs_link,
+                                               issue_ref=issue_ref, issue_link=issue_link,
+                                               compare_table_scripts_as_int=compare_table_scripts_as_int)
+    except:
+        print('\n')
+        print('Something went wrong, check the logs. Aborting')
+        print(sys.exc_info()[0])
+        print(sys.exc_info()[1])
+        print(sys.exc_info()[2])
+        raise
+
     sys.stdout.write('\033[2K\r' + colorama.Fore.GREEN + deployed + colorama.Fore.RESET +
                      ' | ' + connection_string)
     sys.stdout.write('\n')
