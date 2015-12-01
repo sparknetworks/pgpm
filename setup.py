@@ -64,7 +64,7 @@ setup(
     url='https://github.com/affinitas/pgpm',
     packages=['pgpm', 'pgpm.utils', 'pgpm.lib', 'pgpm.lib.utils'],
     long_description=open('README.rst').read(),
-    install_requires=['docopt', 'psycopg2', 'sqlparse', 'emoji'],
+    install_requires=['docopt', 'psycopg2', 'sqlparse', 'colorama'],
     classifiers=[
         'Development Status :: 3 - Alpha',
         'Environment :: Console',

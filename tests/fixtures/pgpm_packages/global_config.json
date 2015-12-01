@@ -1,0 +1,40 @@
+{
+    "connection_sets": [
+        {
+            "name": "resdb_connection_set",
+            "type": "RESDB",
+            "connection_string": "postgresql://localhost:5432/resdb",
+            "payload": "SELECT * FROM connection_list_view"
+        },
+        {
+            "name": "manual_connection_set",
+            "type": "LIST",
+            "payload": [
+                {
+                    "host": "localhost",
+                    "dbname": "pgpm_test_1",
+                    "port": 5432,
+                    "environment": "alpha"
+                },
+                {
+                    "host": "localhost",
+                    "dbname": "pgpm_test_2",
+                    "port": 5432,
+                    "environment": "alpha"
+                },
+                {
+                    "host": "localhost",
+                    "dbname": "pgpm_test_3",
+                    "port": 5432,
+                    "environment": "beta"
+                },
+                {
+                    "host": "localhost",
+                    "dbname": "pgpm_test_4",
+                    "port": 5432,
+                    "environment": "beta"
+                }
+            ]
+        }
+    ]
+}

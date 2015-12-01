@@ -1,0 +1,17 @@
+2015-11-25 14:23:07,937 - pgpm.app - INFO - Installing... host=localhost port=5432 dbname=pgpm_test_1 user=apanchoyan
+2015-11-25 14:23:07,947 - pgpm.app - INFO - Executing a preamble to install statement
+2015-11-25 14:23:07,949 - pgpm.app - INFO - Installing package manager
+2015-11-25 14:23:07,967 - pgpm.app - INFO - Running functions definitions scripts
+2015-11-25 14:23:08,028 - pgpm.app - INFO - Successfully installed host=localhost port=5432 dbname=pgpm_test_1 user=apanchoyan
+2015-11-25 14:23:08,028 - pgpm.app - INFO - Installing... host=localhost port=5432 dbname=pgpm_test_2 user=apanchoyan
+2015-11-25 14:23:08,037 - pgpm.app - INFO - Executing a preamble to install statement
+2015-11-25 14:23:08,038 - pgpm.app - INFO - Installing package manager
+2015-11-25 14:23:08,056 - pgpm.app - INFO - Running functions definitions scripts
+2015-11-25 14:23:08,118 - pgpm.app - INFO - Successfully installed host=localhost port=5432 dbname=pgpm_test_2 user=apanchoyan
+2015-11-25 14:23:08,118 - pgpm.app - INFO - Installing... host=localhost port=5432 dbname=pgpm_test_3 user=apanchoyan
+2015-11-25 14:23:08,126 - pgpm.app - INFO - Executing a preamble to install statement
+2015-11-25 14:23:08,127 - pgpm.app - INFO - Installing package manager
+2015-11-25 14:23:08,148 - pgpm.app - INFO - Running functions definitions scripts
+2015-11-25 14:23:08,210 - pgpm.app - INFO - Successfully installed host=localhost port=5432 dbname=pgpm_test_3 user=apanchoyan
+2015-11-25 14:23:49,802 - pgpm.app - INFO - Deploying... host=localhost port=5432 dbname=pgpm_test_1 user=apanchoyan
+2015-11-25 14:51:09,827 - pgpm.app - INFO - Deploying... host=localhost port=5432 dbname=pgpm_test_1 user=apanchoyan
