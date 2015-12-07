@@ -6,16 +6,21 @@ Deployment script that will deploy Postgres schemas to a given DB
 Copyright (c) Affinitas GmbH
 
 Usage:
-  pgpm deploy (<connection_string> [-o | --owner <owner_role>] | set <environment_name> <product_name> (-o <owner_role>| --owner <owner_role>) ) [-m | --mode <mode>]
-                [-u | --user <user_role>...]
+  pgpm deploy (<connection_string> | set <environment_name> <product_name> [-u | --user <user_role>])
+                [-m | --mode <mode>]
+                [-o | --owner <owner_role>] [--usage <usage_role>...]
                 [-f <file_name>...] [--add-config <config_file_path>] [--debug-mode]
                 [--vcs-ref <vcs_reference>] [--vcs-link <vcs_link>]
-                [--issue-ref <issue_reference>] [--issue-link <issue_link>] [--compare-table-scripts-as-int]
+                [--issue-ref <issue_reference>] [--issue-link <issue_link>]
+                [--compare-table-scripts-as-int]
                 [--log-file <log_file_name>] [--global-config <global_config_file_path>]
-  pgpm remove <connection_string> --pkg-name <schema_name> <v_major> <v_minor> <v_patch> <v_pre> [--old-rev <old_rev>]
-                [--log-file <log_file_name>]
-  pgpm install (<connection_string> | set <environment_name> <product_name> (-o <owner_role>| --owner <owner_role>) ) [--update | --upgrade] [--debug-mode]
-                [-u | --user <user_role>...] [--log-file <log_file_name>] [--global-config <global_config_file_path>]
+  pgpm remove <connection_string> --pkg-name <schema_name>
+                <v_major> <v_minor> <v_patch> <v_pre>
+                [--old-rev <old_rev>] [--log-file <log_file_name>]
+  pgpm install (<connection_string> | set <environment_name> <product_name> [-u | --user <user_role>])
+                [--update | --upgrade] [--debug-mode]
+                [--usage <usage_role>...]
+                [--log-file <log_file_name>] [--global-config <global_config_file_path>]
   pgpm uninstall <connection_string>
   pgpm list set <environment_name> <product_name>
                 [--log-file <log_file_name>] [--global-config <global_config_file_path>]
@@ -42,13 +47,16 @@ Options:
                             If --mode flag is *overwrite* or --file flag is used then this is ignored
                             as no new schema is created
                             During installation a mandatory parameter to install on behalf of the specified user
-  -u <user_role>..., --user <user_role>...
+  -u <user_role>, --user <user_role>
+                            User name that connects to DB. Make sense only when used with `set` option.
+                            If omitted than os user name is used.
+  --usage <usage_role>...
                             Roles to which different usage privileges will be applied.
                             If omitted, default behaviour of DB applies
                             In case used with install command the following will be applied:
-                            GRANT SELECT, INSERT, UPDATE, DELETE on all current and future tables
-                            GRANT EXECUTE on all future and current functions
-                            GRANT USAGE, SELECT on all current and future sequences
+                            GRANT SELECT, INSERT, UPDATE, DELETE on all current tables and by default in the future
+                            GRANT EXECUTE on all current functions and by default in the future
+                            GRANT USAGE, SELECT on all current sequences and by default in the future
                             In case used with deploy command the following will be applied:
                             GRANT USAGE on the schema
                             GRANT EXECUTE on all current functions
@@ -66,7 +74,7 @@ Options:
                             Provides path to additional config file. Attributes of this file overwrite config.json
   --debug-mode              Debug level loggin enabled if command is present. Otherwise Info level
   --update                  Update pgpm to a newer version
-  --upgrade                  Update pgpm to a newer version
+  --upgrade                 Update pgpm to a newer version
   --vcs-ref <vcs_reference> Adds vcs reference to deployments log table
   --vcs-link <vcs_link>     Adds link to repository to deployments log table
   --issue-ref <issue_reference>
@@ -96,6 +104,7 @@ import pgpm.lib.deploy
 import sys
 import time
 import colorama
+import getpass
 import pgpm.utils.config
 
 from docopt import docopt
@@ -129,64 +138,63 @@ def main():
         handler.setFormatter(formatter)
         logger.addHandler(handler)
 
+    # check if connecting user is set otherwise take os user
+    connection_user = getpass.getuser()
+    if arguments['--user']:
+        connection_user = arguments['--user'][0]
+
+    owner_role = None
+    if arguments['--owner']:
+        owner_role = arguments['--owner'][0]
+
     sys.stdout.write('\033[2J\033[0;0H')
     if arguments['install']:
         if arguments['set']:
-            if arguments['<environment_name>'] and arguments['<product_name>']:
-                if arguments['--global-config']:
-                    extra_config_file = arguments['--global-config']
-                else:
-                    extra_config_file = None
-                global_config = pgpm.utils.config.GlobalConfiguration(None, extra_config_file)
-                for connection_dict in global_config.get_list_connections(arguments['<environment_name>'], arguments['<product_name>']):
-                    connection_string = 'host=' + connection_dict['host'] + ' port=' + str(connection_dict['port']) + \
-                                        ' dbname=' + connection_dict['dbname'] + ' user=' + arguments['--owner'][0]
-                    _install_schema(connection_string, arguments['--user'], arguments['--upgrade'])
+            if arguments['--global-config']:
+                extra_config_file = arguments['--global-config']
             else:
-                logger.error('set command can be used only with environment_name argument')
-                sys.exit(1)
+                extra_config_file = None
+            global_config = pgpm.utils.config.GlobalConfiguration('~/.pgpmconfig', extra_config_file)
+            for connection_dict in global_config.get_list_connections(arguments['<environment_name>'],
+                                                                      arguments['<product_name>']):
+                connection_string = 'host=' + connection_dict['host'] + ' port=' + str(connection_dict['port']) + \
+                                    ' dbname=' + connection_dict['dbname'] + ' user=' + connection_user
+                _install_schema(connection_string, arguments['--usage'], arguments['--upgrade'])
         else:
-            _install_schema(arguments['<connection_string>'], arguments['--user'], arguments['--upgrade'])
+            _install_schema(arguments['<connection_string>'], arguments['--usage'], arguments['--upgrade'])
     elif arguments['deploy']:
         if arguments['set']:
-            if arguments['<environment_name>'] and arguments['<product_name>']:
-                if arguments['--global-config']:
-                    extra_config_file = arguments['--global-config']
-                else:
-                    extra_config_file = None
-                global_config = pgpm.utils.config.GlobalConfiguration(None, extra_config_file)
-                for connection_dict in global_config.get_list_connections(arguments['<environment_name>'], arguments['<product_name>']):
-                    connection_string = 'host=' + connection_dict['host'] + ' port=' + str(connection_dict['port']) + \
-                                        ' dbname=' + connection_dict['dbname'] + ' user=' + arguments['--owner'][0]
-                    _deploy_schema(connection_string,
-                                   mode=arguments['--mode'][0], files_deployment=arguments['--file'],
-                                   vcs_ref=arguments['--vcs-ref'], vcs_link=arguments['--vcs-link'],
-                                   issue_ref=arguments['--issue-ref'], issue_link=arguments['--issue-link'],
-                                   compare_table_scripts_as_int=arguments['--compare-table-scripts-as-int'])
-
+            if arguments['--global-config']:
+                extra_config_file = arguments['--global-config']
             else:
-                logger.error('set command can be used only with environment_name argument')
-                sys.exit(1)
+                extra_config_file = None
+            global_config = pgpm.utils.config.GlobalConfiguration('~/.pgpmconfig', extra_config_file)
+            for connection_dict in global_config.get_list_connections(arguments['<environment_name>'], arguments['<product_name>']):
+                connection_string = 'host=' + connection_dict['host'] + ' port=' + str(connection_dict['port']) + \
+                                    ' dbname=' + connection_dict['dbname'] + ' user=' + connection_user
+                _deploy_schema(connection_string,
+                               mode=arguments['--mode'][0], files_deployment=arguments['--file'],
+                               vcs_ref=arguments['--vcs-ref'], vcs_link=arguments['--vcs-link'],
+                               issue_ref=arguments['--issue-ref'], issue_link=arguments['--issue-link'],
+                               compare_table_scripts_as_int=arguments['--compare-table-scripts-as-int'],
+                               owner_role=owner_role)
+
         else:
             _deploy_schema(arguments['<connection_string>'],
                            mode=arguments['--mode'][0], files_deployment=arguments['--file'],
                            vcs_ref=arguments['--vcs-ref'], vcs_link=arguments['--vcs-link'],
                            issue_ref=arguments['--issue-ref'], issue_link=arguments['--issue-link'],
-                           compare_table_scripts_as_int=arguments['--compare-table-scripts-as-int'])
+                           compare_table_scripts_as_int=arguments['--compare-table-scripts-as-int'],
+                           owner_role=owner_role)
 
     elif arguments['list']:
         if arguments['set']:
-            if arguments['<environment_name>'] and arguments['<product_name>']:
-                if arguments['--global-config']:
-                    extra_config_file = arguments['--global-config']
-                else:
-                    extra_config_file = None
-                global_config = pgpm.utils.config.GlobalConfiguration(None, extra_config_file)
-                pprint(global_config.get_list_connections(arguments['<environment_name>'], arguments['<product_name>']))
-
+            if arguments['--global-config']:
+                extra_config_file = arguments['--global-config']
             else:
-                logger.error('set command can be used only with environment_name argument')
-                sys.exit(1)
+                extra_config_file = None
+            global_config = pgpm.utils.config.GlobalConfiguration('~/.pgpmconfig', extra_config_file)
+            pprint(global_config.get_list_connections(arguments['<environment_name>'], arguments['<product_name>']))
     else:
         print(arguments)
 
@@ -215,7 +223,8 @@ def _install_schema(connection_string, user, upgrade):
     return 0
 
 
-def _deploy_schema(connection_string, mode, files_deployment, vcs_ref, vcs_link, issue_ref, issue_link, compare_table_scripts_as_int):
+def _deploy_schema(connection_string, mode, files_deployment, vcs_ref, vcs_link, issue_ref, issue_link,
+                   compare_table_scripts_as_int, owner_role):
     deploying = 'Deploying...'
     deployed = 'Deployed    '
     logger.info('Deploying... {0}'.format(connection_string))
@@ -223,8 +232,11 @@ def _deploy_schema(connection_string, mode, files_deployment, vcs_ref, vcs_link,
                      ' | ' + connection_string)
     sys.stdout.flush()
 
+    config_dict = {}
+    if owner_role:
+        config_dict['owner_role'] = owner_role
     deployment_manager = pgpm.lib.deploy.DeploymentManager(
-        connection_string, os.path.abspath('.'), os.path.abspath(settings.CONFIG_FILE_NAME),
+        connection_string, os.path.abspath('.'), os.path.abspath(settings.CONFIG_FILE_NAME), config_dict,
         pgpm_schema_name='_pgpm', logger=logger)
     try:
         deployment_manager.deploy_schema_to_db(mode=mode, files_deployment=files_deployment,
