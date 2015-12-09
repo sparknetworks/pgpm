@@ -147,6 +147,10 @@ def main():
     if arguments['--owner']:
         owner_role = arguments['--owner'][0]
 
+    usage_roles = None
+    if arguments['--usage']:
+        usage_roles = arguments['--usage']
+
     sys.stdout.write('\033[2J\033[0;0H')
     if arguments['install']:
         if arguments['set']:
@@ -177,7 +181,7 @@ def main():
                                vcs_ref=arguments['--vcs-ref'], vcs_link=arguments['--vcs-link'],
                                issue_ref=arguments['--issue-ref'], issue_link=arguments['--issue-link'],
                                compare_table_scripts_as_int=arguments['--compare-table-scripts-as-int'],
-                               owner_role=owner_role)
+                               owner_role=owner_role, usage_roles=usage_roles)
 
         else:
             _deploy_schema(arguments['<connection_string>'],
@@ -185,7 +189,7 @@ def main():
                            vcs_ref=arguments['--vcs-ref'], vcs_link=arguments['--vcs-link'],
                            issue_ref=arguments['--issue-ref'], issue_link=arguments['--issue-link'],
                            compare_table_scripts_as_int=arguments['--compare-table-scripts-as-int'],
-                           owner_role=owner_role)
+                           owner_role=owner_role, usage_roles=usage_roles)
 
     elif arguments['list']:
         if arguments['set']:
@@ -224,7 +228,7 @@ def _install_schema(connection_string, user, upgrade):
 
 
 def _deploy_schema(connection_string, mode, files_deployment, vcs_ref, vcs_link, issue_ref, issue_link,
-                   compare_table_scripts_as_int, owner_role):
+                   compare_table_scripts_as_int, owner_role, usage_roles):
     deploying = 'Deploying...'
     deployed = 'Deployed    '
     logger.info('Deploying... {0}'.format(connection_string))
@@ -235,6 +239,8 @@ def _deploy_schema(connection_string, mode, files_deployment, vcs_ref, vcs_link,
     config_dict = {}
     if owner_role:
         config_dict['owner_role'] = owner_role
+    if usage_roles:
+        config_dict['usage_roles'] = usage_roles
     deployment_manager = pgpm.lib.deploy.DeploymentManager(
         connection_string, os.path.abspath('.'), os.path.abspath(settings.CONFIG_FILE_NAME), config_dict,
         pgpm_schema_name='_pgpm', logger=logger)
