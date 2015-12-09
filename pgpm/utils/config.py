@@ -25,13 +25,17 @@ class GlobalConfiguration(object):
         default_config = None
         extra_config = None
         if default_config_path:
-            default_config_file = open(os.path.abspath(os.path.expanduser(default_config_path)))
-            default_config = json.load(default_config_file)
-            default_config_file.close()
+            default_config_full_path = os.path.abspath(os.path.expanduser(default_config_path))
+            if os.path.isfile(default_config_full_path):
+                default_config_file = open(default_config_full_path)
+                default_config = json.load(default_config_file)
+                default_config_file.close()
         if extra_config_path:
-            extra_config_file = open(os.path.abspath(os.path.expanduser(extra_config_path)))
-            extra_config = json.load(extra_config_file)
-            extra_config_file.close()
+            extra_config_full_path = os.path.abspath(os.path.expanduser(extra_config_path))
+            if os.path.isfile(extra_config_full_path):
+                extra_config_file = open(extra_config_full_path)
+                extra_config = json.load(extra_config_file)
+                extra_config_file.close()
         if default_config and extra_config:
             global_config_dict = dict(list(default_config) + list(extra_config.items()))
         elif default_config:
