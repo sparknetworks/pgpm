@@ -37,7 +37,7 @@ class GlobalConfiguration(object):
                 extra_config = json.load(extra_config_file)
                 extra_config_file.close()
         if default_config and extra_config:
-            global_config_dict = dict(list(default_config) + list(extra_config.items()))
+            global_config_dict = dict(default_config, **extra_config)
         elif default_config:
             global_config_dict = default_config
         elif extra_config:
@@ -60,10 +60,27 @@ class GlobalConfiguration(object):
                     if item['type'] == 'LIST':
                         self.connection_sets = self.connection_sets + item['payload']
 
-    def get_list_connections(self, environment, product):
+    def get_list_connections(self, environment, product, unique_name_list=None, is_except=False):
+        """
+        Gets list of connections that satisfy the filter by environment, product and (optionally) unique DB names
+        :param environment: Environment name
+        :param product: Product name
+        :param unique_name_list: list of unique db aliases
+        :param is_except: take the connections with aliases provided or, the other wat around, take all the rest
+        :return: list of dictionaries with connections
+        """
         return_list = []
         for item in self.connection_sets:
-            if item['environment'] == environment and item['product'] == product:
-                return_list.append(item)
-
+            if unique_name_list and item['unique_name']:
+                if is_except:
+                    if item['environment'] == environment and item['product'] == product and \
+                            (item['unique_name'] not in unique_name_list):
+                        return_list.append(item)
+                elif not is_except:
+                    if item['environment'] == environment and item['product'] == product and \
+                            (item['unique_name'] in unique_name_list):
+                        return_list.append(item)
+            else:
+                if item['environment'] == environment and item['product'] == product:
+                    return_list.append(item)
         return return_list
