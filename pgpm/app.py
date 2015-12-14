@@ -6,7 +6,7 @@ Deployment script that will deploy Postgres schemas to a given DB
 Copyright (c) Affinitas GmbH
 
 Usage:
-  pgpm deploy (<connection_string> | set <environment_name> <product_name> [-u | --user <user_role>])
+  pgpm deploy (<connection_string> | set <environment_name> <product_name> ([--except] [<unique_name>...]) [-u | --user <user_role>])
                 [-m | --mode <mode>]
                 [-o | --owner <owner_role>] [--usage <usage_role>...]
                 [-f <file_name>...] [--add-config <config_file_path>] [--debug-mode]
@@ -17,12 +17,14 @@ Usage:
   pgpm remove <connection_string> --pkg-name <schema_name>
                 <v_major> <v_minor> <v_patch> <v_pre>
                 [--old-rev <old_rev>] [--log-file <log_file_name>]
-  pgpm install (<connection_string> | set <environment_name> <product_name> [-u | --user <user_role>])
-                [--update | --upgrade] [--debug-mode]
+  pgpm install (<connection_string> | set <environment_name> <product_name> ([--except] [<unique_name>...]) [-u | --user <user_role>])
+                [--upgrade] [--debug-mode]
                 [--usage <usage_role>...]
                 [--log-file <log_file_name>] [--global-config <global_config_file_path>]
-  pgpm uninstall <connection_string>
-  pgpm list set <environment_name> <product_name>
+  pgpm uninstall (<connection_string> | set <environment_name> <product_name> [-u | --user <user_role>])
+                [--log-file <log_file_name>] [--global-config <global_config_file_path>]
+                [--debug-mode]
+  pgpm list set <environment_name> <product_name> ([--except] [<unique_name>...])
                 [--log-file <log_file_name>] [--global-config <global_config_file_path>]
   pgpm -h | --help
   pgpm -v | --version
@@ -32,6 +34,7 @@ Arguments:
                             Can be in any format psycopg2 would understand it
   <environment_name>        Name of an environment to be used to get connection strings from global-config file
   <product_name>            Name of a product. E.g. ed_live
+  <unique_name>             Unique name that identifies DB within the set
 
 Options:
   -h --help                 Show this screen.
@@ -73,7 +76,6 @@ Options:
   --add-config <config_file_path>
                             Provides path to additional config file. Attributes of this file overwrite config.json
   --debug-mode              Debug level loggin enabled if command is present. Otherwise Info level
-  --update                  Update pgpm to a newer version
   --upgrade                 Update pgpm to a newer version
   --vcs-ref <vcs_reference> Adds vcs reference to deployments log table
   --vcs-link <vcs_link>     Adds link to repository to deployments log table
@@ -159,13 +161,39 @@ def main():
             else:
                 extra_config_file = None
             global_config = pgpm.utils.config.GlobalConfiguration('~/.pgpmconfig', extra_config_file)
-            for connection_dict in global_config.get_list_connections(arguments['<environment_name>'],
-                                                                      arguments['<product_name>']):
-                connection_string = 'host=' + connection_dict['host'] + ' port=' + str(connection_dict['port']) + \
-                                    ' dbname=' + connection_dict['dbname'] + ' user=' + connection_user
-                _install_schema(connection_string, arguments['--usage'], arguments['--upgrade'])
+            connections_list = global_config.get_list_connections(arguments['<environment_name>'],
+                                                                  arguments['<product_name>'],
+                                                                  arguments['<unique_name>'],
+                                                                  arguments['--except'])
+            if len(connections_list) > 0:
+                for connection_dict in connections_list:
+                    connection_string = 'host=' + connection_dict['host'] + ' port=' + str(connection_dict['port']) + \
+                                        ' dbname=' + connection_dict['dbname'] + ' user=' + connection_user
+                    _install_schema(connection_string, arguments['--usage'], arguments['--upgrade'])
+            else:
+                _emit_no_set_found(arguments['<environment_name>'], arguments['<product_name>'])
         else:
             _install_schema(arguments['<connection_string>'], arguments['--usage'], arguments['--upgrade'])
+    elif arguments['uninstall']:
+        if arguments['set']:
+            if arguments['--global-config']:
+                extra_config_file = arguments['--global-config']
+            else:
+                extra_config_file = None
+            global_config = pgpm.utils.config.GlobalConfiguration('~/.pgpmconfig', extra_config_file)
+            connections_list = global_config.get_list_connections(arguments['<environment_name>'],
+                                                                  arguments['<product_name>'],
+                                                                  arguments['<unique_name>'],
+                                                                  arguments['--except'])
+            if len(connections_list) > 0:
+                for connection_dict in connections_list:
+                    connection_string = 'host=' + connection_dict['host'] + ' port=' + str(connection_dict['port']) + \
+                                        ' dbname=' + connection_dict['dbname'] + ' user=' + connection_user
+                    _uninstall_schema(connection_string)
+            else:
+                _emit_no_set_found(arguments['<environment_name>'], arguments['<product_name>'])
+        else:
+            _uninstall_schema(arguments['<connection_string>'])
     elif arguments['deploy']:
         if arguments['set']:
             if arguments['--global-config']:
@@ -173,15 +201,22 @@ def main():
             else:
                 extra_config_file = None
             global_config = pgpm.utils.config.GlobalConfiguration('~/.pgpmconfig', extra_config_file)
-            for connection_dict in global_config.get_list_connections(arguments['<environment_name>'], arguments['<product_name>']):
-                connection_string = 'host=' + connection_dict['host'] + ' port=' + str(connection_dict['port']) + \
-                                    ' dbname=' + connection_dict['dbname'] + ' user=' + connection_user
-                _deploy_schema(connection_string,
-                               mode=arguments['--mode'][0], files_deployment=arguments['--file'],
-                               vcs_ref=arguments['--vcs-ref'], vcs_link=arguments['--vcs-link'],
-                               issue_ref=arguments['--issue-ref'], issue_link=arguments['--issue-link'],
-                               compare_table_scripts_as_int=arguments['--compare-table-scripts-as-int'],
-                               owner_role=owner_role, usage_roles=usage_roles)
+            connections_list = global_config.get_list_connections(arguments['<environment_name>'],
+                                                                  arguments['<product_name>'],
+                                                                  arguments['<unique_name>'],
+                                                                  arguments['--except'])
+            if len(connections_list) > 0:
+                for connection_dict in connections_list:
+                    connection_string = 'host=' + connection_dict['host'] + ' port=' + str(connection_dict['port']) + \
+                                        ' dbname=' + connection_dict['dbname'] + ' user=' + connection_user
+                    _deploy_schema(connection_string,
+                                   mode=arguments['--mode'][0], files_deployment=arguments['--file'],
+                                   vcs_ref=arguments['--vcs-ref'], vcs_link=arguments['--vcs-link'],
+                                   issue_ref=arguments['--issue-ref'], issue_link=arguments['--issue-link'],
+                                   compare_table_scripts_as_int=arguments['--compare-table-scripts-as-int'],
+                                   owner_role=owner_role, usage_roles=usage_roles)
+            else:
+                _emit_no_set_found(arguments['<environment_name>'], arguments['<product_name>'])
 
         else:
             _deploy_schema(arguments['<connection_string>'],
@@ -198,7 +233,13 @@ def main():
             else:
                 extra_config_file = None
             global_config = pgpm.utils.config.GlobalConfiguration('~/.pgpmconfig', extra_config_file)
-            pprint(global_config.get_list_connections(arguments['<environment_name>'], arguments['<product_name>']))
+            connections_list = global_config.get_list_connections(arguments['<environment_name>'],
+                                                                  arguments['<product_name>'])
+            if len(connections_list) > 0:
+                pprint(global_config.get_list_connections(arguments['<environment_name>'], arguments['<product_name>'],
+                                                          arguments['<unique_name>'], arguments['--except']))
+            else:
+                _emit_no_set_found(arguments['<environment_name>'], arguments['<product_name>'])
     else:
         print(arguments)
 
@@ -224,6 +265,30 @@ def _install_schema(connection_string, user, upgrade):
                      ' | ' + connection_string)
     sys.stdout.write('\n')
     logger.info('Successfully installed {0}'.format(connection_string))
+    return 0
+
+
+def _uninstall_schema(connection_string):
+    logger.info('Uninstalling pgpm... {0}'.format(connection_string))
+    sys.stdout.write(colorama.Fore.YELLOW + 'Uninstalling pgpm...' + colorama.Fore.RESET +
+                     ' | ' + connection_string)
+    sys.stdout.flush()
+    installation_manager = pgpm.lib.install.InstallationManager(connection_string, '_pgpm', 'basic',
+                                                                logger)
+    try:
+        installation_manager.uninstall_pgpm_from_db()
+    except:
+        print('\n')
+        print('Something went wrong, check the logs. Aborting')
+        print(sys.exc_info()[0])
+        print(sys.exc_info()[1])
+        print(sys.exc_info()[2])
+        raise
+
+    sys.stdout.write('\033[2K\r' + colorama.Fore.GREEN + 'Uninstalled pgpm' + colorama.Fore.RESET +
+                     ' | ' + connection_string)
+    sys.stdout.write('\n')
+    logger.info('Successfully uninstalled pgpm from {0}'.format(connection_string))
     return 0
 
 
@@ -262,6 +327,22 @@ def _deploy_schema(connection_string, mode, files_deployment, vcs_ref, vcs_link,
     sys.stdout.write('\n')
     logger.info('Successfully deployed {0}'.format(connection_string))
     return 0
+
+
+def _emit_no_set_found(environment_name, product_name):
+    """
+    writes to std out and logs if no connection string is found for deployment
+    :param environment_name:
+    :param product_name:
+    :return:
+    """
+    sys.stdout.write(colorama.Fore.YELLOW + 'No connections found in global config file '
+                                            'in environment: {0} for product: {1}'
+                     .format(environment_name, product_name) +
+                     colorama.Fore.RESET)
+    sys.stdout.write('\n')
+    logger.warning('No connections found in environment: {0} for product: {1}'
+                   .format(environment_name, product_name))
 
 
 if __name__ == '__main__':
