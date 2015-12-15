@@ -1,3 +1,4 @@
+import json
 import logging
 import requests
 import requests.auth
@@ -26,12 +27,14 @@ class Jira:
         :param password: password for authentication
         :return:
         """
+        headers = {'content-type': 'application/json'}
+
         self._logger.debug('Connecting to Jira to call the following REST method {0}'.format(url))
         if method == "GET":
             response = requests.get(self.base_url + url, auth=requests.auth.HTTPBasicAuth(user, password))
         elif method == "POST":
-            response = requests.post(self.base_url + url, data=data,
-                                     auth=requests.auth.HTTPBasicAuth(user, password))
+            response = requests.post(self.base_url + url, data=json.dumps(data),
+                                     auth=requests.auth.HTTPBasicAuth(user, password), headers=headers)
         else:
             raise ValueError('method argument supports GET or POST values only')
         self._logger.debug('REST call successfully finalised')
