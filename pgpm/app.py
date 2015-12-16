@@ -108,6 +108,7 @@ import time
 import colorama
 import getpass
 import pgpm.utils.config
+import pgpm.utils.issue_trackers
 
 from docopt import docopt
 
@@ -215,6 +216,18 @@ def main():
                                    issue_ref=arguments['--issue-ref'], issue_link=arguments['--issue-link'],
                                    compare_table_scripts_as_int=arguments['--compare-table-scripts-as-int'],
                                    owner_role=owner_role, usage_roles=usage_roles)
+                if arguments['--issue-ref'] and ('issue-tracker' in global_config.global_config_dict):
+                    if global_config.global_config_dict['issue-tracker']['type'] == "JIRA":
+                        logger.info('Leaving a comment to JIRA issue {0} about deployment'.
+                                    format(arguments['--issue-ref']))
+                        jira = pgpm.utils.issue_trackers.Jira(
+                                global_config.global_config_dict['issue-tracker']['url'], logger)
+                        jira.call_jira_rest("/issue/" + arguments['--issue-ref'] + "/comment",
+                                            global_config.global_config_dict['issue-tracker']['username'],
+                                            global_config.global_config_dict['issue-tracker']['password'], "POST",
+                                            {"body": "Test comment"})
+                        logger.info('Jira comment done')
+
             else:
                 _emit_no_set_found(arguments['<environment_name>'], arguments['<product_name>'])
 
