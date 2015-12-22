@@ -9,7 +9,7 @@ Usage:
   pgpm deploy (<connection_string> | set <environment_name> <product_name> ([--except] [<unique_name>...]) [-u | --user <user_role>])
                 [-m | --mode <mode>]
                 [-o | --owner <owner_role>] [--usage <usage_role>...]
-                [-f <file_name>...] [--add-config <config_file_path>] [--debug-mode]
+                [--force-table-redeploy] [-f <file_name>...] [--add-config <config_file_path>] [--debug-mode]
                 [--vcs-ref <vcs_reference>] [--vcs-link <vcs_link>]
                 [--issue-ref <issue_reference>] [--issue-link <issue_link>]
                 [--compare-table-scripts-as-int]
