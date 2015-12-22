@@ -103,6 +103,9 @@ from pprint import pprint
 
 import pgpm.lib.install
 import pgpm.lib.deploy
+import pgpm.lib.utils.config
+import pgpm.lib.utils.db
+import pgpm.lib.utils.vcs
 import sys
 import time
 import colorama
@@ -156,16 +159,16 @@ def main():
 
     sys.stdout.write('\033[2J\033[0;0H')
     if arguments['install']:
+        if arguments['--global-config']:
+            extra_config_file = arguments['--global-config']
+        else:
+            extra_config_file = None
+        global_config = pgpm.utils.config.GlobalConfiguration('~/.pgpmconfig', extra_config_file)
+        connections_list = global_config.get_list_connections(arguments['<environment_name>'],
+                                                              arguments['<product_name>'],
+                                                              arguments['<unique_name>'],
+                                                              arguments['--except'])
         if arguments['set']:
-            if arguments['--global-config']:
-                extra_config_file = arguments['--global-config']
-            else:
-                extra_config_file = None
-            global_config = pgpm.utils.config.GlobalConfiguration('~/.pgpmconfig', extra_config_file)
-            connections_list = global_config.get_list_connections(arguments['<environment_name>'],
-                                                                  arguments['<product_name>'],
-                                                                  arguments['<unique_name>'],
-                                                                  arguments['--except'])
             if len(connections_list) > 0:
                 for connection_dict in connections_list:
                     connection_string = 'host=' + connection_dict['host'] + ' port=' + str(connection_dict['port']) + \
@@ -176,16 +179,16 @@ def main():
         else:
             _install_schema(arguments['<connection_string>'], arguments['--usage'], arguments['--upgrade'])
     elif arguments['uninstall']:
+        if arguments['--global-config']:
+            extra_config_file = arguments['--global-config']
+        else:
+            extra_config_file = None
+        global_config = pgpm.utils.config.GlobalConfiguration('~/.pgpmconfig', extra_config_file)
+        connections_list = global_config.get_list_connections(arguments['<environment_name>'],
+                                                              arguments['<product_name>'],
+                                                              arguments['<unique_name>'],
+                                                              arguments['--except'])
         if arguments['set']:
-            if arguments['--global-config']:
-                extra_config_file = arguments['--global-config']
-            else:
-                extra_config_file = None
-            global_config = pgpm.utils.config.GlobalConfiguration('~/.pgpmconfig', extra_config_file)
-            connections_list = global_config.get_list_connections(arguments['<environment_name>'],
-                                                                  arguments['<product_name>'],
-                                                                  arguments['<unique_name>'],
-                                                                  arguments['--except'])
             if len(connections_list) > 0:
                 for connection_dict in connections_list:
                     connection_string = 'host=' + connection_dict['host'] + ' port=' + str(connection_dict['port']) + \
@@ -196,17 +199,25 @@ def main():
         else:
             _uninstall_schema(arguments['<connection_string>'])
     elif arguments['deploy']:
+        if arguments['--global-config']:
+            extra_config_file = arguments['--global-config']
+        else:
+            extra_config_file = None
+        global_config = pgpm.utils.config.GlobalConfiguration('~/.pgpmconfig', extra_config_file)
+        connections_list = global_config.get_list_connections(arguments['<environment_name>'],
+                                                              arguments['<product_name>'],
+                                                              arguments['<unique_name>'],
+                                                              arguments['--except'])
+        config_dict = {}
+        if owner_role:
+            config_dict['owner_role'] = owner_role
+        if usage_roles:
+            config_dict['usage_roles'] = usage_roles
+        config_object = pgpm.lib.utils.config.SchemaConfiguration(
+                os.path.abspath(settings.CONFIG_FILE_NAME), config_dict, os.path.abspath('.'))
         if arguments['set']:
-            if arguments['--global-config']:
-                extra_config_file = arguments['--global-config']
-            else:
-                extra_config_file = None
-            global_config = pgpm.utils.config.GlobalConfiguration('~/.pgpmconfig', extra_config_file)
-            connections_list = global_config.get_list_connections(arguments['<environment_name>'],
-                                                                  arguments['<product_name>'],
-                                                                  arguments['<unique_name>'],
-                                                                  arguments['--except'])
             if len(connections_list) > 0:
+                target_names_list = []
                 for connection_dict in connections_list:
                     connection_string = 'host=' + connection_dict['host'] + ' port=' + str(connection_dict['port']) + \
                                         ' dbname=' + connection_dict['dbname'] + ' user=' + connection_user
@@ -215,19 +226,18 @@ def main():
                                    vcs_ref=arguments['--vcs-ref'], vcs_link=arguments['--vcs-link'],
                                    issue_ref=arguments['--issue-ref'], issue_link=arguments['--issue-link'],
                                    compare_table_scripts_as_int=arguments['--compare-table-scripts-as-int'],
-                                   owner_role=owner_role, usage_roles=usage_roles)
-                if arguments['--issue-ref'] and ('issue-tracker' in global_config.global_config_dict):
-                    if global_config.global_config_dict['issue-tracker']['type'] == "JIRA":
-                        logger.info('Leaving a comment to JIRA issue {0} about deployment'.
-                                    format(arguments['--issue-ref']))
-                        jira = pgpm.utils.issue_trackers.Jira(
-                                global_config.global_config_dict['issue-tracker']['url'], logger)
-                        jira.call_jira_rest("/issue/" + arguments['--issue-ref'] + "/comment",
-                                            global_config.global_config_dict['issue-tracker']['username'],
-                                            global_config.global_config_dict['issue-tracker']['password'], "POST",
-                                            {"body": "Test comment"})
-                        logger.info('Jira comment done')
+                                   config_object=config_object)
+                    if 'unique_name' in connection_dict:
+                        target_names_list.append(connection_dict['unique_name'])
+                    else:
+                        target_names_list.append(connection_dict['dbname'])
 
+                if arguments['--issue-ref'] and ('issue-tracker' in global_config.global_config_dict):
+                    target_str = 'environment: *' + connections_list[0]['environment'] + '*, product: *' + \
+                                 connections_list[0]['product'] + '*, DBs: *' + ', '.join(target_names_list) + '*'
+                    _comment_issue_tracker(arguments['--issue-ref'], global_config,
+                                           target_str,
+                                           config_object, arguments)
             else:
                 _emit_no_set_found(arguments['<environment_name>'], arguments['<product_name>'])
 
@@ -237,7 +247,12 @@ def main():
                            vcs_ref=arguments['--vcs-ref'], vcs_link=arguments['--vcs-link'],
                            issue_ref=arguments['--issue-ref'], issue_link=arguments['--issue-link'],
                            compare_table_scripts_as_int=arguments['--compare-table-scripts-as-int'],
-                           owner_role=owner_role, usage_roles=usage_roles)
+                           config_object=config_object)
+            if arguments['--issue-ref'] and ('issue-tracker' in global_config.global_config_dict):
+                conn_parsed = pgpm.lib.utils.db.parse_connection_string_psycopg2(arguments['<connection_string>'])
+                target_str = 'host: *' + conn_parsed['host'] + '*, DB: *' + conn_parsed['dbname'] + '*'
+                _comment_issue_tracker(arguments['--issue-ref'], global_config, target_str,
+                                       config_object, arguments)
 
     elif arguments['list']:
         if arguments['set']:
@@ -306,7 +321,7 @@ def _uninstall_schema(connection_string):
 
 
 def _deploy_schema(connection_string, mode, files_deployment, vcs_ref, vcs_link, issue_ref, issue_link,
-                   compare_table_scripts_as_int, owner_role, usage_roles):
+                   compare_table_scripts_as_int, config_object):
     deploying = 'Deploying...'
     deployed = 'Deployed    '
     logger.info('Deploying... {0}'.format(connection_string))
@@ -314,14 +329,9 @@ def _deploy_schema(connection_string, mode, files_deployment, vcs_ref, vcs_link,
                      ' | ' + connection_string)
     sys.stdout.flush()
 
-    config_dict = {}
-    if owner_role:
-        config_dict['owner_role'] = owner_role
-    if usage_roles:
-        config_dict['usage_roles'] = usage_roles
     deployment_manager = pgpm.lib.deploy.DeploymentManager(
-        connection_string, os.path.abspath('.'), os.path.abspath(settings.CONFIG_FILE_NAME), config_dict,
-        pgpm_schema_name='_pgpm', logger=logger)
+            connection_string=connection_string, source_code_path=os.path.abspath('.'), config_object=config_object,
+            pgpm_schema_name='_pgpm', logger=logger)
     try:
         deployment_manager.deploy_schema_to_db(mode=mode, files_deployment=files_deployment,
                                                vcs_ref=vcs_ref, vcs_link=vcs_link,
@@ -339,6 +349,7 @@ def _deploy_schema(connection_string, mode, files_deployment, vcs_ref, vcs_link,
                      ' | ' + connection_string)
     sys.stdout.write('\n')
     logger.info('Successfully deployed {0}'.format(connection_string))
+
     return 0
 
 
@@ -356,6 +367,48 @@ def _emit_no_set_found(environment_name, product_name):
     sys.stdout.write('\n')
     logger.warning('No connections found in environment: {0} for product: {1}'
                    .format(environment_name, product_name))
+
+
+def _comment_issue_tracker(issue_ref, global_config, target_string, config_object, arguments):
+    if global_config.global_config_dict['issue-tracker']['type'] == "JIRA":
+        logger.info('Leaving a comment to JIRA issue {0} about deployment'.format(issue_ref))
+        jira = pgpm.utils.issue_trackers.Jira(global_config.global_config_dict['issue-tracker']['url'], logger)
+
+        _schema_row = ''
+        if config_object.scope == config_object.SCHEMA_SCOPE:
+            _schema_row += '\n||Schema name|'
+            if config_object.subclass == config_object.BASIC_SUBCLASS:
+                _schema_row += config_object.name
+            elif config_object.subclass == config_object.VERSIONED_SUBCLASS:
+                _schema_row += config_object.name + '_' + config_object.version.to_string()
+            _schema_row += '|'
+
+        _files_row = ''
+        if arguments['--file']:
+            _files_row += '\n||Files deployed|'
+            _files_row += ',\n'.join(arguments['--file']) + '|'
+        else:
+            _files_row += '\n||Files deployed|all|'
+
+        _git_commit_row = ''
+        _git_repo_row = ''
+        if pgpm.lib.utils.vcs.is_git_directory(os.path.abspath('.')):
+            _git_repo_row += '\n||GIT repo|'
+            _git_repo_row += pgpm.lib.utils.vcs.get_git_remote(os.path.abspath('.'))
+            _git_repo_row += '|'
+            if not arguments['--vcs-ref']:
+                _git_commit_row += '\n||GIT commit|'
+                _git_commit_row += pgpm.lib.utils.vcs.get_git_revision_hash(os.path.abspath('.'))
+                _git_commit_row += '|'
+
+        comment_body = global_config.global_config_dict['issue-tracker']['comment-body']\
+            .format(pkg_name=config_object.name, target=target_string, schema=_schema_row, files=_files_row,
+                    git_repo=_git_repo_row, git_commit=_git_commit_row)
+        jira.call_jira_rest("/issue/" + issue_ref + "/comment",
+                            global_config.global_config_dict['issue-tracker']['username'],
+                            global_config.global_config_dict['issue-tracker']['password'], "POST",
+                            {"body": comment_body})
+        logger.info('Jira comment done')
 
 
 if __name__ == '__main__':
