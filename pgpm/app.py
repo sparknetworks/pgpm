@@ -105,6 +105,7 @@ import pgpm.lib.install
 import pgpm.lib.deploy
 import pgpm.lib.utils.config
 import pgpm.lib.utils.db
+import pgpm.lib.utils.vcs
 import sys
 import time
 import colorama
@@ -232,8 +233,11 @@ def main():
                         target_names_list.append(connection_dict['dbname'])
 
                 if arguments['--issue-ref'] and ('issue-tracker' in global_config.global_config_dict):
-                    _comment_issue_tracker(arguments['--issue-ref'], global_config, ', '.join(target_names_list),
-                                           config_object.name, arguments['--vcs-ref'])
+                    target_str = 'environment: *' + connections_list[0]['environment'] + '*, product: *' + \
+                                 connections_list[0]['product'] + '*, DBs: *' + ', '.join(target_names_list) + '*'
+                    _comment_issue_tracker(arguments['--issue-ref'], global_config,
+                                           target_str,
+                                           config_object, arguments)
             else:
                 _emit_no_set_found(arguments['<environment_name>'], arguments['<product_name>'])
 
@@ -246,9 +250,9 @@ def main():
                            config_object=config_object)
             if arguments['--issue-ref'] and ('issue-tracker' in global_config.global_config_dict):
                 conn_parsed = pgpm.lib.utils.db.parse_connection_string_psycopg2(arguments['<connection_string>'])
-                target = conn_parsed.hostname
-                _comment_issue_tracker(arguments['--issue-ref'], global_config, target,
-                                       config_object.name, arguments['--vcs-ref'])
+                target_str = 'host: *' + conn_parsed['host'] + '*, DB: *' + conn_parsed['dbname'] + '*'
+                _comment_issue_tracker(arguments['--issue-ref'], global_config, target_str,
+                                       config_object, arguments)
 
     elif arguments['list']:
         if arguments['set']:
@@ -365,14 +369,41 @@ def _emit_no_set_found(environment_name, product_name):
                    .format(environment_name, product_name))
 
 
-def _comment_issue_tracker(issue_ref, global_config, target_string, package_name, vcs_ref):
+def _comment_issue_tracker(issue_ref, global_config, target_string, config_object, arguments):
     if global_config.global_config_dict['issue-tracker']['type'] == "JIRA":
-        logger.info('Leaving a comment to JIRA issue {0} about deployment'.
-                    format(issue_ref))
-        jira = pgpm.utils.issue_trackers.Jira(
-                global_config.global_config_dict['issue-tracker']['url'], logger)
+        logger.info('Leaving a comment to JIRA issue {0} about deployment'.format(issue_ref))
+        jira = pgpm.utils.issue_trackers.Jira(global_config.global_config_dict['issue-tracker']['url'], logger)
+
+        _schema_row = ''
+        if config_object.scope == config_object.SCHEMA_SCOPE:
+            _schema_row += '\n||Schema name|'
+            if config_object.subclass == config_object.BASIC_SUBCLASS:
+                _schema_row += config_object.name
+            elif config_object.subclass == config_object.VERSIONED_SUBCLASS:
+                _schema_row += config_object.name + '_' + config_object.version.to_string()
+            _schema_row += '|'
+
+        _files_row = ''
+        if arguments['--file']:
+            _files_row += '\n||Files deployed|'
+            _files_row += ',\n'.join(arguments['--file']) + '|'
+        else:
+            _files_row += '\n||Files deployed|all|'
+
+        _git_commit_row = ''
+        _git_repo_row = ''
+        if pgpm.lib.utils.vcs.is_git_directory(os.path.abspath('.')):
+            _git_repo_row += '\n||GIT repo|'
+            _git_repo_row += pgpm.lib.utils.vcs.get_git_remote(os.path.abspath('.'))
+            _git_repo_row += '|'
+            if not arguments['--vcs-ref']:
+                _git_commit_row += '\n||GIT commit|'
+                _git_commit_row += pgpm.lib.utils.vcs.get_git_revision_hash(os.path.abspath('.'))
+                _git_commit_row += '|'
+
         comment_body = global_config.global_config_dict['issue-tracker']['comment-body']\
-            .format(pkg_name=package_name, target=target_string)
+            .format(pkg_name=config_object.name, target=target_string, schema=_schema_row, files=_files_row,
+                    git_repo=_git_repo_row, git_commit=_git_commit_row)
         jira.call_jira_rest("/issue/" + issue_ref + "/comment",
                             global_config.global_config_dict['issue-tracker']['username'],
                             global_config.global_config_dict['issue-tracker']['password'], "POST",
