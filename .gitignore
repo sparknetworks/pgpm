@@ -2,7 +2,6 @@
 .idea/
 bin/
 include/
-lib/
 
 #### joe made this: https://goel.io/joe
 
@@ -23,7 +22,6 @@ develop-eggs/
 dist/
 downloads/
 eggs/
-lib/
 lib64/
 parts/
 sdist/
