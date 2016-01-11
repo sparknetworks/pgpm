@@ -19,7 +19,7 @@ import pgpm.lib.utils.vcs
 
 class DeploymentManager:
     """
-    Class that will manage pgpm installation
+    Class that will manage db code deployments
     """
     def __init__(self, connection_string, source_code_path=None, config_path=None, config_dict=None, config_object=None,
                  pgpm_schema_name='_pgpm', logger=None):
@@ -52,7 +52,8 @@ class DeploymentManager:
 
     def deploy_schema_to_db(self, mode='safe', files_deployment=None, vcs_ref=None, vcs_link=None,
                             issue_ref=None, issue_link=None, compare_table_scripts_as_int=False,
-                            config_path=None, config_dict=None, config_object=None, source_code_path=None):
+                            config_path=None, config_dict=None, config_object=None, source_code_path=None,
+                            auto_commit=False, force_table_redeploy=False):
         """
         Deploys schema
         :param files_deployment: if specific script to be deployed, only find them
@@ -68,6 +69,15 @@ class DeploymentManager:
         :param source_code_path:
         :return:
         """
+
+        if auto_commit:
+            if mode == 'safe' and files_deployment:
+                self._logger.debug("Auto commit mode is on. Be careful/")
+            else:
+                self._logger.error("Auto commit deployment can only be done with file "
+                                   "deployments and in safe mode for security reasons")
+                raise ValueError("Auto commit deployment can only be done with file "
+                                 "deployments and in safe mode for security reasons")
 
         # set source code path if exists
         self._source_code_path = self._source_code_path or source_code_path
@@ -107,6 +117,10 @@ class DeploymentManager:
         if self._conn.closed:
             self._conn = psycopg2.connect(self._connection_string, connection_factory=pgpm.lib.utils.db.MegaConnection)
         cur = self._conn.cursor()
+
+        # be cautious, dangerous thing
+        if auto_commit:
+            self._conn.autocommit = True
 
         # Check if DB is pgpm enabled
         if not pgpm.lib.utils.db.SqlScriptsHelper.schema_exists(cur, self._pgpm_schema_name):
@@ -221,11 +235,17 @@ class DeploymentManager:
             types_script = '\n'.join([''.join(value) for key, value in type_scripts_dict.items()])
             type_drop_scripts, type_ordered_scripts, type_unordered_scripts = self._reorder_types(types_script)
             if type_drop_scripts:
-                cur.execute('\n'.join(type_drop_scripts))
+                for statement in type_drop_scripts:
+                    if statement:
+                        cur.execute(statement)
             if type_ordered_scripts:
-                cur.execute('\n'.join(type_ordered_scripts))
+                for statement in type_ordered_scripts:
+                    if statement:
+                        cur.execute(statement)
             if type_unordered_scripts:
-                cur.execute('\n'.join(type_unordered_scripts))
+                for statement in type_unordered_scripts:
+                    if statement:
+                        cur.execute(statement)
             self._logger.debug('Types loaded to schema {0}'.format(schema_name))
         else:
             self._logger.debug('No type scripts to deploy')
@@ -258,7 +278,15 @@ class DeploymentManager:
                 elif self._config.scope == pgpm.lib.utils.config.SchemaConfiguration.DATABASE_SCOPE:
                     cur.execute("SET search_path TO DEFAULT ;")
                 if (not is_table_executed) and value:
-                    cur.execute(value)
+                    # if auto commit mode than every statement is called separately.
+                    # this is done this way as auto commit is normally used when non transaction statements are called
+                    # then this is needed to avoid "cannot be executed from a function or multi-command string" errors
+                    if auto_commit:
+                        for statement in sqlparse.split(value):
+                            if statement:
+                                cur.execute(statement)
+                    else:
+                        cur.execute(value)
                     self._logger.debug(value)
                     self._logger.debug('{0} executed for schema {1}'.format(key, schema_name))
                     executed_table_scripts.append(key)
@@ -273,7 +301,15 @@ class DeploymentManager:
             self._logger.debug('Running functions definitions scripts')
             for key, value in function_scripts_dict.items():
                 if value:
-                    cur.execute(value)
+                    # if auto commit mode than every statement is called separately.
+                    # this is done this way as auto commit is normally used when non transaction statements are called
+                    # then this is needed to avoid "cannot be executed from a function or multi-command string" errors
+                    if auto_commit:
+                        for statement in sqlparse.split(value):
+                            if statement:
+                                cur.execute(statement)
+                    else:
+                        cur.execute(value)
             self._logger.debug('Functions loaded to schema {0}'.format(schema_name))
         else:
             self._logger.debug('No function scripts to deploy')
@@ -283,7 +319,15 @@ class DeploymentManager:
             self._logger.debug('Running views definitions scripts')
             for key, value in view_scripts_dict.items():
                 if value:
-                    cur.execute(value)
+                    # if auto commit mode than every statement is called separately.
+                    # this is done this way as auto commit is normally used when non transaction statements are called
+                    # then this is needed to avoid "cannot be executed from a function or multi-command string" errors
+                    if auto_commit:
+                        for statement in sqlparse.split(value):
+                            if statement:
+                                cur.execute(statement)
+                    else:
+                        cur.execute(value)
             self._logger.debug('Views loaded to schema {0}'.format(schema_name))
         else:
             self._logger.debug('No view scripts to deploy')
@@ -293,7 +337,15 @@ class DeploymentManager:
             self._logger.debug('Running trigger definitions scripts')
             for key, value in trigger_scripts_dict.items():
                 if value:
-                    cur.execute(value)
+                    # if auto commit mode than every statement is called separately.
+                    # this is done this way as auto commit is normally used when non transaction statements are called
+                    # then this is needed to avoid "cannot be executed from a function or multi-command string" errors
+                    if auto_commit:
+                        for statement in sqlparse.split(value):
+                            if statement:
+                                cur.execute(statement)
+                    else:
+                        cur.execute(value)
             self._logger.debug('Triggers loaded to schema {0}'.format(schema_name))
         else:
             self._logger.debug('No trigger scripts to deploy')
