@@ -14,6 +14,11 @@ Usage:
                 [--issue-ref <issue_reference>] [--issue-link <issue_link>]
                 [--compare-table-scripts-as-int]
                 [--log-file <log_file_name>] [--global-config <global_config_file_path>]
+                [--auto-commit]
+  pgpm execute (<connection_string> | set <environment_name> <product_name> ([--except] [<unique_name>...]) [-u | --user <user_role>])
+                --query <query>
+                [--until-zero]
+                [--log-file <log_file_name>] [--debug-mode] [--global-config <global_config_file_path>]
   pgpm remove <connection_string> --pkg-name <schema_name>
                 <v_major> <v_minor> <v_patch> <v_pre>
                 [--old-rev <old_rev>] [--log-file <log_file_name>]
@@ -103,6 +108,7 @@ from pprint import pprint
 
 import pgpm.lib.install
 import pgpm.lib.deploy
+import pgpm.lib.execute
 import pgpm.lib.utils.config
 import pgpm.lib.utils.db
 import pgpm.lib.utils.vcs
@@ -198,6 +204,26 @@ def main():
                 _emit_no_set_found(arguments['<environment_name>'], arguments['<product_name>'])
         else:
             _uninstall_schema(arguments['<connection_string>'])
+    elif arguments['execute']:
+        if arguments['--global-config']:
+            extra_config_file = arguments['--global-config']
+        else:
+            extra_config_file = None
+        global_config = pgpm.utils.config.GlobalConfiguration('~/.pgpmconfig', extra_config_file)
+        connections_list = global_config.get_list_connections(arguments['<environment_name>'],
+                                                              arguments['<product_name>'],
+                                                              arguments['<unique_name>'],
+                                                              arguments['--except'])
+        if arguments['set']:
+            if len(connections_list) > 0:
+                for connection_dict in connections_list:
+                    connection_string = 'host=' + connection_dict['host'] + ' port=' + str(connection_dict['port']) + \
+                                        ' dbname=' + connection_dict['dbname'] + ' user=' + connection_user
+                    _execute(connection_string, arguments['--query'], arguments['--until-zero'])
+            else:
+                _emit_no_set_found(arguments['<environment_name>'], arguments['<product_name>'])
+        else:
+            _execute(arguments['<connection_string>'], arguments['--query'], arguments['--until-zero'])
     elif arguments['deploy']:
         if arguments['--global-config']:
             extra_config_file = arguments['--global-config']
@@ -226,6 +252,8 @@ def main():
                                    vcs_ref=arguments['--vcs-ref'], vcs_link=arguments['--vcs-link'],
                                    issue_ref=arguments['--issue-ref'], issue_link=arguments['--issue-link'],
                                    compare_table_scripts_as_int=arguments['--compare-table-scripts-as-int'],
+                                   auto_commit=arguments['--auto-commit'],
+                                   force_table_redeploy=arguments['--force-table-redeploy'],
                                    config_object=config_object)
                     if 'unique_name' in connection_dict:
                         target_names_list.append(connection_dict['unique_name'])
@@ -247,6 +275,8 @@ def main():
                            vcs_ref=arguments['--vcs-ref'], vcs_link=arguments['--vcs-link'],
                            issue_ref=arguments['--issue-ref'], issue_link=arguments['--issue-link'],
                            compare_table_scripts_as_int=arguments['--compare-table-scripts-as-int'],
+                           auto_commit=arguments['--auto-commit'],
+                           force_table_redeploy=arguments['--force-table-redeploy'],
                            config_object=config_object)
             if arguments['--issue-ref'] and ('issue-tracker' in global_config.global_config_dict):
                 conn_parsed = pgpm.lib.utils.db.parse_connection_string_psycopg2(arguments['<connection_string>'])
@@ -321,7 +351,7 @@ def _uninstall_schema(connection_string):
 
 
 def _deploy_schema(connection_string, mode, files_deployment, vcs_ref, vcs_link, issue_ref, issue_link,
-                   compare_table_scripts_as_int, config_object):
+                   compare_table_scripts_as_int, auto_commit, force_table_redeploy, config_object):
     deploying = 'Deploying...'
     deployed = 'Deployed    '
     logger.info('Deploying... {0}'.format(connection_string))
@@ -336,7 +366,8 @@ def _deploy_schema(connection_string, mode, files_deployment, vcs_ref, vcs_link,
         deployment_manager.deploy_schema_to_db(mode=mode, files_deployment=files_deployment,
                                                vcs_ref=vcs_ref, vcs_link=vcs_link,
                                                issue_ref=issue_ref, issue_link=issue_link,
-                                               compare_table_scripts_as_int=compare_table_scripts_as_int)
+                                               compare_table_scripts_as_int=compare_table_scripts_as_int,
+                                               auto_commit=auto_commit, force_table_redeploy=force_table_redeploy)
     except:
         print('\n')
         print('Something went wrong, check the logs. Aborting')
@@ -352,6 +383,33 @@ def _deploy_schema(connection_string, mode, files_deployment, vcs_ref, vcs_link,
 
     return 0
 
+
+def _execute(connection_string, query, until_zero=False):
+    calling = 'Executing query {0}...'.format(query)
+    called = 'Executed query {0}    '.format(query)
+    logger.info('Deploying... {0}'.format(connection_string))
+    sys.stdout.write(colorama.Fore.YELLOW + calling + colorama.Fore.RESET +
+                     ' | ' + connection_string)
+    sys.stdout.flush()
+
+    query_manager = pgpm.lib.execute.QueryExecutionManager(
+            connection_string=connection_string, logger=logger)
+    try:
+        query_manager.execute(query, until_zero=until_zero)
+    except:
+        print('\n')
+        print('Something went wrong, check the logs. Aborting')
+        print(sys.exc_info()[0])
+        print(sys.exc_info()[1])
+        print(sys.exc_info()[2])
+        raise
+
+    sys.stdout.write('\033[2K\r' + colorama.Fore.GREEN + called + colorama.Fore.RESET +
+                     ' | ' + connection_string)
+    sys.stdout.write('\n')
+    logger.info('Successfully deployed {0}'.format(connection_string))
+
+    return 0
 
 def _emit_no_set_found(environment_name, product_name):
     """
