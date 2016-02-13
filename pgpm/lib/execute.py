@@ -69,7 +69,6 @@ class QueryExecutionManager:
             self._close_db_conn(cur)
             sys.exit(1)
 
-
         # Executing query
         if until_zero:
             self._logger.debug('Running query {0} until it returns 0 (but not more than 10000 times'
