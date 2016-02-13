@@ -113,7 +113,6 @@ import pgpm.lib.utils.config
 import pgpm.lib.utils.db
 import pgpm.lib.utils.vcs
 import sys
-import time
 import colorama
 import getpass
 import pgpm.utils.config
@@ -255,7 +254,7 @@ def main():
                                    auto_commit=arguments['--auto-commit'],
                                    force_table_redeploy=arguments['--force-table-redeploy'],
                                    config_object=config_object)
-                    if 'unique_name' in connection_dict:
+                    if 'unique_name' in connection_dict and connection_dict['unique_name']:
                         target_names_list.append(connection_dict['unique_name'])
                     else:
                         target_names_list.append(connection_dict['dbname'])
@@ -410,6 +409,7 @@ def _execute(connection_string, query, until_zero=False):
     logger.info('Successfully deployed {0}'.format(connection_string))
 
     return 0
+
 
 def _emit_no_set_found(environment_name, product_name):
     """

@@ -1,5 +1,4 @@
 import json
-import re
 import os
 
 import pgpm.lib.utils.db
@@ -50,7 +49,8 @@ class GlobalConfiguration(object):
             if 'connection_sets' in self.global_config_dict:
                 for item in self.global_config_dict['connection_sets']:
                     if item['type'] == 'RESDB':
-                        conn = psycopg2.connect(item['connection_string'], connection_factory=pgpm.lib.utils.db.MegaConnection)
+                        conn = psycopg2.connect(item['connection_string'],
+                                                connection_factory=pgpm.lib.utils.db.MegaConnection)
                         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
                         cur.execute(item['payload'])
                         result_tuple = cur.fetchall()
@@ -71,15 +71,16 @@ class GlobalConfiguration(object):
         """
         return_list = []
         for item in self.connection_sets:
-            if unique_name_list and item['unique_name']:
-                if is_except:
-                    if item['environment'] == environment and item['product'] == product and \
-                            (item['unique_name'] not in unique_name_list):
-                        return_list.append(item)
-                elif not is_except:
-                    if item['environment'] == environment and item['product'] == product and \
-                            (item['unique_name'] in unique_name_list):
-                        return_list.append(item)
+            if unique_name_list:
+                if item['unique_name']:
+                    if is_except:
+                        if item['environment'] == environment and item['product'] == product and \
+                                (item['unique_name'] not in unique_name_list):
+                            return_list.append(item)
+                    elif not is_except:
+                        if item['environment'] == environment and item['product'] == product and \
+                                (item['unique_name'] in unique_name_list):
+                            return_list.append(item)
             else:
                 if item['environment'] == environment and item['product'] == product:
                     return_list.append(item)
