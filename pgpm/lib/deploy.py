@@ -10,6 +10,7 @@ import psycopg2
 import re
 import sqlparse
 
+import pgpm.lib.abstract_deploy
 import pgpm.lib.utils
 import pgpm.lib.utils.db
 import pgpm.lib.version
@@ -17,7 +18,7 @@ import pgpm.lib.utils.config
 import pgpm.lib.utils.vcs
 
 
-class DeploymentManager:
+class DeploymentManager(pgpm.lib.abstract_deploy.AbstractDeploymentManager):
     """
     Class that will manage db code deployments
     """
@@ -32,10 +33,8 @@ class DeploymentManager:
         :param config_object: SchemaConfiguration object
         :param logger: logger object
         """
-        self._logger = logger or logging.getLogger(__name__)
-        self._connection_string = connection_string
-        self._conn = psycopg2.connect(connection_string, connection_factory=pgpm.lib.utils.db.MegaConnection)
-        self._conn.init(logger)
+
+        super(DeploymentManager, self).__init__(connection_string, pgpm_schema_name, logger)
         if source_code_path:
             self._source_code_path = source_code_path
         elif config_path:
@@ -45,10 +44,7 @@ class DeploymentManager:
             self._config = config_object
         else:
             self._config = pgpm.lib.utils.config.SchemaConfiguration(config_path, config_dict, self._source_code_path)
-        self._pgpm_schema_name = pgpm_schema_name
         self._logger.debug('Loading project configuration...')
-        self._pgpm_version = pgpm.lib.utils.config.Version(pgpm.lib.version.__version__,
-                                                           pgpm.lib.utils.config.VersionTypes.python)
 
     def deploy_schema_to_db(self, mode='safe', files_deployment=None, vcs_ref=None, vcs_link=None,
                             issue_ref=None, issue_link=None, compare_table_scripts_as_int=False,
@@ -111,7 +107,7 @@ class DeploymentManager:
         trigger_scripts_dict = self._get_scripts(self._config.triggers_path, files_deployment,
                                                  "triggers", self._source_code_path)
         table_scripts_dict_denormalised = self._get_scripts(self._config.tables_path, files_deployment,
-                                               "tables", self._source_code_path)
+                                                            "tables", self._source_code_path)
         table_scripts_dict = {os.path.split(k)[1]: v for k, v in table_scripts_dict_denormalised.items()}
 
         if self._conn.closed:
@@ -391,7 +387,8 @@ class DeploymentManager:
         # Commit transaction
         self._conn.commit()
 
-        self._close_db_conn(cur)
+        cur.close()
+        self._conn.close()
 
         return 0
 
