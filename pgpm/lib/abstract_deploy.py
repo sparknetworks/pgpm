@@ -8,7 +8,7 @@ import pgpm.lib.utils.config
 import pgpm.lib.utils.vcs
 
 
-class AbstractDeploymentManager:
+class AbstractDeploymentManager(object):
     """
     "Abstract" class (not intended to be called directly) that sets basic configuration and interface for classes
     that manage deployments within db
@@ -27,3 +27,6 @@ class AbstractDeploymentManager:
         self._pgpm_schema_name = pgpm_schema_name
         self._pgpm_version = pgpm.lib.utils.config.Version(pgpm.lib.version.__version__,
                                                            pgpm.lib.utils.config.VersionTypes.python)
+
+    DEPLOYMENT_OUTPUT_CODE_OK = 0
+    DEPLOYMENT_OUTPUT_CODE_NOT_ALL_DEPLOYED = 1

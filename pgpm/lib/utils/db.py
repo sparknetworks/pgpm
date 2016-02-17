@@ -74,9 +74,19 @@ class MegaConnection(psycopg2.extensions.connection):
         """
         self.logger = logger or self.logger
 
-    def close(self):
+    def close(self, rollback=True):
+        # rollback or commit only if connection has transaction in progress
+        if self.status == psycopg2.extensions.STATUS_IN_TRANSACTION:
+            # need to do as some middlewares like pgBouncer incorrectly react to implicit rollback
+            # see more here: http://initd.org/psycopg/docs/connection.html#connection.close
+            if rollback:
+                self.rollback()
+                self.logger.debug('Active transaction rolled back.')
+            else:
+                self.commit()
+                self.logger.debug('Active transaction committed.')
         r_value = super(MegaConnection, self).close()
-        self.logger.debug('Connection closed')
+        self.logger.debug('Connection closed.')
         return r_value
 
 

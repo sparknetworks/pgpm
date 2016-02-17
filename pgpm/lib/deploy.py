@@ -49,7 +49,7 @@ class DeploymentManager(pgpm.lib.abstract_deploy.AbstractDeploymentManager):
     def deploy_schema_to_db(self, mode='safe', files_deployment=None, vcs_ref=None, vcs_link=None,
                             issue_ref=None, issue_link=None, compare_table_scripts_as_int=False,
                             config_path=None, config_dict=None, config_object=None, source_code_path=None,
-                            auto_commit=False, force_table_redeploy=False):
+                            auto_commit=False):
         """
         Deploys schema
         :param files_deployment: if specific script to be deployed, only find them
@@ -63,8 +63,21 @@ class DeploymentManager(pgpm.lib.abstract_deploy.AbstractDeploymentManager):
         :param config_dict:
         :param config_object:
         :param source_code_path:
-        :return:
+        :param auto_commit:
+        :return: dictionary of the following format:
+            {
+                code: 0 if all fine, otherwise something else,
+                message: message on the output
+                function_scripts_deployed: list of function files deployed
+                type_scripts_deployed: list of type files deployed
+                view_scripts_deployed: list of type files deployed
+                trigger_scripts_deployed: list of type files deployed
+                table_scripts_deployed: list of type files deployed
+            }
+        :rtype: dict
         """
+
+        return_value = {}
 
         if auto_commit:
             if mode == 'safe' and files_deployment:
@@ -122,7 +135,7 @@ class DeploymentManager(pgpm.lib.abstract_deploy.AbstractDeploymentManager):
         if not pgpm.lib.utils.db.SqlScriptsHelper.schema_exists(cur, self._pgpm_schema_name):
             self._logger.error('Can\'t deploy schemas to DB where pgpm was not installed. '
                                'First install pgpm by running pgpm install')
-            self._close_db_conn(cur)
+            self._conn.close()
             sys.exit(1)
 
         # check installed version of _pgpm schema.
@@ -132,12 +145,12 @@ class DeploymentManager(pgpm.lib.abstract_deploy.AbstractDeploymentManager):
         if pgpm_v_script > pgpm_v_db:
             self._logger.error('{0} schema version is outdated. Please run pgpm install --upgrade first.'
                                .format(self._pgpm_schema_name))
-            self._close_db_conn(cur)
+            self._conn.close()
             sys.exit(1)
         elif pgpm_v_script < pgpm_v_db:
             self._logger.error('Deployment script\'s version is lower than the version of {0} schema '
                                'installed in DB. Update pgpm script first.'.format(self._pgpm_schema_name))
-            self._close_db_conn(cur)
+            self._conn.close()
             sys.exit(1)
 
         # Resolve dependencies
@@ -149,7 +162,7 @@ class DeploymentManager(pgpm.lib.abstract_deploy.AbstractDeploymentManager):
                 self._logger.error('There are unresolved dependencies. Deploy the following package(s) and try again:')
                 for unresolved_pkg in _list_of_unresolved_deps:
                     self._logger.error('{0}'.format(unresolved_pkg))
-                self._close_db_conn(cur)
+                self._conn.close()
                 sys.exit(1)
 
         # Prepare and execute preamble
@@ -177,7 +190,7 @@ class DeploymentManager(pgpm.lib.abstract_deploy.AbstractDeploymentManager):
                 if not pgpm.lib.utils.db.SqlScriptsHelper.schema_exists(cur, schema_name):
                     self._logger.error('Can\'t deploy scripts to schema {0}. Schema doesn\'t exist in database'
                                        .format(schema_name))
-                    self._close_db_conn(cur)
+                    self._conn.close()
                     sys.exit(1)
                 else:
                     pgpm.lib.utils.db.SqlScriptsHelper.set_search_path(cur, schema_name)
@@ -189,7 +202,7 @@ class DeploymentManager(pgpm.lib.abstract_deploy.AbstractDeploymentManager):
                 elif mode == 'safe':
                     self._logger.error('Schema already exists. It won\'t be overriden in safe mode. '
                                        'Rerun your script with "-m moderate", "-m overwrite" or "-m unsafe" flags')
-                    self._close_db_conn(cur)
+                    self._conn.close()
                     sys.exit(1)
                 elif mode == 'moderate':
                     old_schema_exists = True
@@ -243,8 +256,10 @@ class DeploymentManager(pgpm.lib.abstract_deploy.AbstractDeploymentManager):
                     if statement:
                         cur.execute(statement)
             self._logger.debug('Types loaded to schema {0}'.format(schema_name))
+            return_value['type_scripts_deployed'] = [key for key in type_scripts_dict]
         else:
             self._logger.debug('No type scripts to deploy')
+            return_value['type_scripts_deployed'] = []
 
         # Executing Table DDL scripts
         executed_table_scripts = []
@@ -289,8 +304,10 @@ class DeploymentManager(pgpm.lib.abstract_deploy.AbstractDeploymentManager):
                 else:
                     self._logger.debug('{0} is not executed for schema {1} as it has already been executed before. '
                                        .format(key, schema_name))
+            return_value['table_scripts_deployed'] = [key for key in table_scripts_dict]
         else:
             self._logger.debug('No Table DDL scripts to execute')
+            return_value['table_scripts_deployed'] = []
 
         # Executing functions
         if len(function_scripts_dict) > 0:
@@ -307,8 +324,10 @@ class DeploymentManager(pgpm.lib.abstract_deploy.AbstractDeploymentManager):
                     else:
                         cur.execute(value)
             self._logger.debug('Functions loaded to schema {0}'.format(schema_name))
+            return_value['function_scripts_deployed'] = [key for key in function_scripts_dict]
         else:
             self._logger.debug('No function scripts to deploy')
+            return_value['function_scripts_deployed'] = []
 
         # Executing views
         if len(view_scripts_dict) > 0:
@@ -325,8 +344,10 @@ class DeploymentManager(pgpm.lib.abstract_deploy.AbstractDeploymentManager):
                     else:
                         cur.execute(value)
             self._logger.debug('Views loaded to schema {0}'.format(schema_name))
+            return_value['view_scripts_deployed'] = [key for key in view_scripts_dict]
         else:
             self._logger.debug('No view scripts to deploy')
+            return_value['view_scripts_deployed'] = []
 
         # Executing triggers
         if len(trigger_scripts_dict) > 0:
@@ -343,8 +364,10 @@ class DeploymentManager(pgpm.lib.abstract_deploy.AbstractDeploymentManager):
                     else:
                         cur.execute(value)
             self._logger.debug('Triggers loaded to schema {0}'.format(schema_name))
+            return_value['trigger_scripts_deployed'] = [key for key in trigger_scripts_dict]
         else:
             self._logger.debug('No trigger scripts to deploy')
+            return_value['trigger_scripts_deployed'] = []
 
         # alter schema privileges if needed
         if (not files_deployment) and mode != 'overwrite' \
@@ -387,10 +410,11 @@ class DeploymentManager(pgpm.lib.abstract_deploy.AbstractDeploymentManager):
         # Commit transaction
         self._conn.commit()
 
-        cur.close()
         self._conn.close()
 
-        return 0
+        return_value['code'] = self.DEPLOYMENT_OUTPUT_CODE_OK
+        return_value['message'] = 'OK'
+        return return_value
 
     def _get_scripts(self, scripts_path_rel, files_deployment, script_type, project_path):
         """
@@ -495,11 +519,3 @@ class DeploymentManager(pgpm.lib.abstract_deploy.AbstractDeploymentManager):
                     _deps_unresolved = True
         return type_drop_scripts, type_ordered_scripts, type_unordered_scripts
 
-    def _close_db_conn(self, cur):
-        """
-        Close DB connection and cursor
-        """
-        self._logger.debug('Closing connection to {0}...'.format(self._conn.dsn))
-        cur.close()
-        self._conn.close()
-        self._logger.debug('Connection to {0} closed.'.format(self._conn.dsn))
