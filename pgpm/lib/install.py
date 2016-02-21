@@ -10,6 +10,7 @@ import re
 import pgpm.lib.abstract_deploy
 import pgpm.lib.utils
 import pgpm.lib.utils.db
+import pgpm.lib.utils.misc
 import pgpm.lib.version
 import pgpm.lib.utils.config
 
@@ -39,8 +40,8 @@ class InstallationManager(pgpm.lib.abstract_deploy.AbstractDeploymentManager):
         cur = self._conn.cursor()
 
         # get pgpm functions
-        scripts_dict = pgpm.lib.utils.collect_scripts_from_sources('lib/db_scripts/functions', False, '.', True,
-                                                                   self._logger)
+        scripts_dict = pgpm.lib.utils.misc.collect_scripts_from_sources('lib/db_scripts/functions', False, '.', True,
+                                                                        self._logger)
 
         # get current user
         cur.execute(pgpm.lib.utils.db.SqlScriptsHelper.current_user_sql)

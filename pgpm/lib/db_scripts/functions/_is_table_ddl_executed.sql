@@ -44,7 +44,7 @@ BEGIN
             AND pkg_old_rev IS NULL;
     END IF;
 
-    IF FOUND THEN -- Case 1:
+    IF FOUND THEN
         SELECT EXISTS (
             SELECT t_evo_id FROM table_evolutions_log
             WHERE t_evo_file_name=p_file_name

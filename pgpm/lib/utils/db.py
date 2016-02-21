@@ -104,7 +104,7 @@ class MegaCursor(psycopg2.extensions.cursor):
         except Exception:
             raise
         finally:
-            self.connection.logger.debug('Executing query: {0}'.format(self.query.decode('utf-8')))
+            self.connection.logger.debug('Executed query: {0}'.format(self.query.decode('utf-8')))
             noticies = self.connection.fetch_new_notices()
             if noticies:
                 for notice in noticies:
@@ -116,7 +116,7 @@ class MegaCursor(psycopg2.extensions.cursor):
         except Exception:
             raise
         finally:
-            self.connection.logger.debug('Calling stored procedure: {0}'.format(self.query.decode('utf-8')))
+            self.connection.logger.debug('Called stored procedure: {0}'.format(self.query.decode('utf-8')))
             noticies = self.connection.fetch_new_notices()
             if noticies:
                 for notice in noticies:
