@@ -6,23 +6,26 @@ Deployment script that will deploy Postgres schemas to a given DB
 Copyright (c) Affinitas GmbH
 
 Usage:
-  pgpm deploy (<connection_string> | set <environment_name> <product_name> ([--except] [<unique_name>...]) [-u | --user <user_role>])
+  pgpm deploy (<connection_string> | set <environment_name> <product_name> ([--except] [<unique_name>...])
+                [-u | --user <user_role>])
                 [-m | --mode <mode>]
                 [-o | --owner <owner_role>] [--usage <usage_role>...]
-                [--force-table-redeploy] [-f <file_name>...] [--add-config <config_file_path>] [--debug-mode]
+                [-f <file_name>...] [--add-config <config_file_path>] [--debug-mode]
                 [--vcs-ref <vcs_reference>] [--vcs-link <vcs_link>]
                 [--issue-ref <issue_reference>] [--issue-link <issue_link>]
                 [--compare-table-scripts-as-int]
                 [--log-file <log_file_name>] [--global-config <global_config_file_path>]
                 [--auto-commit]
-  pgpm execute (<connection_string> | set <environment_name> <product_name> ([--except] [<unique_name>...]) [-u | --user <user_role>])
+  pgpm execute (<connection_string> | set <environment_name> <product_name> ([--except] [<unique_name>...])
                 --query <query>
+                [-u | --user <user_role>])
                 [--until-zero]
                 [--log-file <log_file_name>] [--debug-mode] [--global-config <global_config_file_path>]
   pgpm remove <connection_string> --pkg-name <schema_name>
                 <v_major> <v_minor> <v_patch> <v_pre>
                 [--old-rev <old_rev>] [--log-file <log_file_name>]
-  pgpm install (<connection_string> | set <environment_name> <product_name> ([--except] [<unique_name>...]) [-u | --user <user_role>])
+  pgpm install (<connection_string> | set <environment_name> <product_name> ([--except] [<unique_name>...])
+                [-u | --user <user_role>])
                 [--upgrade] [--debug-mode]
                 [--usage <usage_role>...]
                 [--log-file <log_file_name>] [--global-config <global_config_file_path>]
@@ -69,18 +72,21 @@ Options:
                             GRANT USAGE on the schema
                             GRANT EXECUTE on all current functions
   -m <mode>, --mode <mode>  Deployment mode. Can be:
-                            * safe. Add constraints to deployment. Will not deploy schema
-                            if it already exists in the DB
+                            * safe. Add constraints to deployment.
+                            Will not deploy schema if it already exists in the DB
+                            Will not deploy table script if it was deployed before (checking by filename)
                             * moderate. If schema exists, will try to rename it by adding suffix "_"
                             and deploy new schema with old name
-                            * unsafe. allows cascade deleting of schema if it exists and adding new one
+                            * unsafe.
+                            Allows cascade deleting of schema if it exists and adding new one
+                            Allows redeploying of deploy script even if was deployed before
                             * overwrite. Will run scripts overwriting existing ones.
                             User have to make sure that overwriting is possible.
-                            E.g. if type exists, rewriting should be preceeded with dropping it first manually
+                            E.g. if type exists, rewriting should be preceded with dropping it first manually
                             [default: safe]
   --add-config <config_file_path>
                             Provides path to additional config file. Attributes of this file overwrite config.json
-  --debug-mode              Debug level loggin enabled if command is present. Otherwise Info level
+  --debug-mode              Debug level logging enabled if command is present. Otherwise Info level
   --upgrade                 Update pgpm to a newer version
   --vcs-ref <vcs_reference> Adds vcs reference to deployments log table
   --vcs-link <vcs_link>     Adds link to repository to deployments log table
@@ -224,6 +230,7 @@ def main():
         else:
             _execute(arguments['<connection_string>'], arguments['--query'], arguments['--until-zero'])
     elif arguments['deploy']:
+        deploy_result = {}
         if arguments['--global-config']:
             extra_config_file = arguments['--global-config']
         else:
@@ -246,13 +253,12 @@ def main():
                 for connection_dict in connections_list:
                     connection_string = 'host=' + connection_dict['host'] + ' port=' + str(connection_dict['port']) + \
                                         ' dbname=' + connection_dict['dbname'] + ' user=' + connection_user
-                    _deploy_schema(connection_string,
+                    deploy_result = _deploy_schema(connection_string,
                                    mode=arguments['--mode'][0], files_deployment=arguments['--file'],
                                    vcs_ref=arguments['--vcs-ref'], vcs_link=arguments['--vcs-link'],
                                    issue_ref=arguments['--issue-ref'], issue_link=arguments['--issue-link'],
                                    compare_table_scripts_as_int=arguments['--compare-table-scripts-as-int'],
                                    auto_commit=arguments['--auto-commit'],
-                                   force_table_redeploy=arguments['--force-table-redeploy'],
                                    config_object=config_object)
                     if 'unique_name' in connection_dict and connection_dict['unique_name']:
                         target_names_list.append(connection_dict['unique_name'])
@@ -262,26 +268,25 @@ def main():
                 if arguments['--issue-ref'] and ('issue-tracker' in global_config.global_config_dict):
                     target_str = 'environment: *' + connections_list[0]['environment'] + '*, product: *' + \
                                  connections_list[0]['product'] + '*, DBs: *' + ', '.join(target_names_list) + '*'
-                    _comment_issue_tracker(arguments['--issue-ref'], global_config,
+                    _comment_issue_tracker(arguments, global_config,
                                            target_str,
-                                           config_object, arguments)
+                                           config_object, deploy_result)
             else:
                 _emit_no_set_found(arguments['<environment_name>'], arguments['<product_name>'])
 
         else:
-            _deploy_schema(arguments['<connection_string>'],
+            deploy_result = _deploy_schema(arguments['<connection_string>'],
                            mode=arguments['--mode'][0], files_deployment=arguments['--file'],
                            vcs_ref=arguments['--vcs-ref'], vcs_link=arguments['--vcs-link'],
                            issue_ref=arguments['--issue-ref'], issue_link=arguments['--issue-link'],
                            compare_table_scripts_as_int=arguments['--compare-table-scripts-as-int'],
                            auto_commit=arguments['--auto-commit'],
-                           force_table_redeploy=arguments['--force-table-redeploy'],
                            config_object=config_object)
             if arguments['--issue-ref'] and ('issue-tracker' in global_config.global_config_dict):
                 conn_parsed = pgpm.lib.utils.db.parse_connection_string_psycopg2(arguments['<connection_string>'])
                 target_str = 'host: *' + conn_parsed['host'] + '*, DB: *' + conn_parsed['dbname'] + '*'
-                _comment_issue_tracker(arguments['--issue-ref'], global_config, target_str,
-                                       config_object, arguments)
+                _comment_issue_tracker(arguments, global_config, target_str,
+                                       config_object, deploy_result)
 
     elif arguments['list']:
         if arguments['set']:
@@ -350,23 +355,24 @@ def _uninstall_schema(connection_string):
 
 
 def _deploy_schema(connection_string, mode, files_deployment, vcs_ref, vcs_link, issue_ref, issue_link,
-                   compare_table_scripts_as_int, auto_commit, force_table_redeploy, config_object):
+                   compare_table_scripts_as_int, auto_commit, config_object):
+    deploy_result = {}
     deploying = 'Deploying...'
-    deployed = 'Deployed    '
+    deployed_files = 'Deployed {0} files out of {1}'
     logger.info('Deploying... {0}'.format(connection_string))
     sys.stdout.write(colorama.Fore.YELLOW + deploying + colorama.Fore.RESET +
                      ' | ' + connection_string)
     sys.stdout.flush()
 
     deployment_manager = pgpm.lib.deploy.DeploymentManager(
-            connection_string=connection_string, source_code_path=os.path.abspath('.'), config_object=config_object,
-            pgpm_schema_name='_pgpm', logger=logger)
+        connection_string=connection_string, source_code_path=os.path.abspath('.'), config_object=config_object,
+        pgpm_schema_name='_pgpm', logger=logger)
+
     try:
-        deployment_manager.deploy_schema_to_db(mode=mode, files_deployment=files_deployment,
-                                               vcs_ref=vcs_ref, vcs_link=vcs_link,
-                                               issue_ref=issue_ref, issue_link=issue_link,
-                                               compare_table_scripts_as_int=compare_table_scripts_as_int,
-                                               auto_commit=auto_commit, force_table_redeploy=force_table_redeploy)
+        deploy_result = deployment_manager.deploy_schema_to_db(
+            mode=mode, files_deployment=files_deployment, vcs_ref=vcs_ref, vcs_link=vcs_link,
+            issue_ref=issue_ref, issue_link=issue_link, compare_table_scripts_as_int=compare_table_scripts_as_int,
+            auto_commit=auto_commit)
     except:
         print('\n')
         print('Something went wrong, check the logs. Aborting')
@@ -375,12 +381,23 @@ def _deploy_schema(connection_string, mode, files_deployment, vcs_ref, vcs_link,
         print(sys.exc_info()[2])
         raise
 
-    sys.stdout.write('\033[2K\r' + colorama.Fore.GREEN + deployed + colorama.Fore.RESET +
-                     ' | ' + connection_string)
-    sys.stdout.write('\n')
-    logger.info('Successfully deployed {0}'.format(connection_string))
+    if deploy_result['code'] == deployment_manager.DEPLOYMENT_OUTPUT_CODE_OK \
+            and deploy_result['deployed_files_count'] == deploy_result['requested_files_count']:
+        sys.stdout.write('\033[2K\r' + colorama.Fore.GREEN +
+                         deployed_files.format(deploy_result['deployed_files_count'],
+                                               deploy_result['requested_files_count']) + colorama.Fore.RESET +
+                         ' | ' + connection_string)
+        sys.stdout.write('\n')
+        logger.info('Successfully deployed {0}'.format(connection_string))
+    elif deploy_result['code'] == deployment_manager.DEPLOYMENT_OUTPUT_CODE_NOT_ALL_DEPLOYED:
+        sys.stdout.write('\033[2K\r' + colorama.Fore.YELLOW +
+                         deployed_files.format(deploy_result['deployed_files_count'],
+                                               deploy_result['requested_files_count']) + colorama.Fore.RESET +
+                         ' | ' + connection_string)
+        sys.stdout.write('\n')
+        logger.warning('Not all files were deployed {0}'.format(connection_string))
 
-    return 0
+    return deploy_result
 
 
 def _execute(connection_string, query, until_zero=False):
@@ -427,9 +444,9 @@ def _emit_no_set_found(environment_name, product_name):
                    .format(environment_name, product_name))
 
 
-def _comment_issue_tracker(issue_ref, global_config, target_string, config_object, arguments):
+def _comment_issue_tracker(arguments, global_config, target_string, config_object, deploy_result):
     if global_config.global_config_dict['issue-tracker']['type'] == "JIRA":
-        logger.info('Leaving a comment to JIRA issue {0} about deployment'.format(issue_ref))
+        logger.info('Leaving a comment to JIRA issue {0} about deployment'.format(arguments['--issue-ref']))
         jira = pgpm.utils.issue_trackers.Jira(global_config.global_config_dict['issue-tracker']['url'], logger)
 
         _schema_row = ''
@@ -444,7 +461,17 @@ def _comment_issue_tracker(issue_ref, global_config, target_string, config_objec
         _files_row = ''
         if arguments['--file']:
             _files_row += '\n||Files deployed|'
-            _files_row += ',\n'.join(arguments['--file']) + '|'
+            if deploy_result['function_scripts_deployed']:
+                _files_row += ',\n'.join(deploy_result['function_scripts_deployed'])
+            if deploy_result['type_scripts_deployed']:
+                _files_row += ',\n'.join(deploy_result['type_scripts_deployed'])
+            if deploy_result['view_scripts_deployed']:
+                _files_row += ',\n'.join(deploy_result['view_scripts_deployed'])
+            if deploy_result['trigger_scripts_deployed']:
+                _files_row += ',\n'.join(deploy_result['trigger_scripts_deployed'])
+            if deploy_result['table_scripts_deployed']:
+                _files_row += ',\n'.join(deploy_result['table_scripts_deployed'])
+            _files_row += '|'
         else:
             _files_row += '\n||Files deployed|all|'
 
@@ -462,7 +489,7 @@ def _comment_issue_tracker(issue_ref, global_config, target_string, config_objec
         comment_body = global_config.global_config_dict['issue-tracker']['comment-body']\
             .format(pkg_name=config_object.name, target=target_string, schema=_schema_row, files=_files_row,
                     git_repo=_git_repo_row, git_commit=_git_commit_row)
-        jira.call_jira_rest("/issue/" + issue_ref + "/comment",
+        jira.call_jira_rest("/issue/" + arguments['--issue-ref'] + "/comment",
                             global_config.global_config_dict['issue-tracker']['username'],
                             global_config.global_config_dict['issue-tracker']['password'], "POST",
                             {"body": comment_body})

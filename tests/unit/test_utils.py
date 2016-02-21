@@ -2,6 +2,7 @@ import pytest
 import os
 import subprocess
 
+import pgpm.lib.utils.misc
 import pgpm.lib.utils.vcs
 
 
@@ -37,10 +38,10 @@ def test_find_whole_word():
     Test find_whole_word function
     :return:
     """
-    assert pgpm.lib.utils.find_whole_word("test")("Nothing") is None
-    assert pgpm.lib.utils.find_whole_word("test")("Test").group().lower() == "test"
-    assert pgpm.lib.utils.find_whole_word("test")("Test test One Two testing test").group().lower() == "test"
-    assert pgpm.lib.utils.find_whole_word("test")("Testify") is None
+    assert pgpm.lib.utils.misc.find_whole_word("test")("Nothing") is None
+    assert pgpm.lib.utils.misc.find_whole_word("test")("Test").group().lower() == "test"
+    assert pgpm.lib.utils.misc.find_whole_word("test")("Test test One Two testing test").group().lower() == "test"
+    assert pgpm.lib.utils.misc.find_whole_word("test")("Testify") is None
 
 
 @pytest.mark.xfail

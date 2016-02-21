@@ -10,14 +10,16 @@ import psycopg2
 import re
 import sqlparse
 
+import pgpm.lib.abstract_deploy
 import pgpm.lib.utils
 import pgpm.lib.utils.db
+import pgpm.lib.utils.misc
 import pgpm.lib.version
 import pgpm.lib.utils.config
 import pgpm.lib.utils.vcs
 
 
-class DeploymentManager:
+class DeploymentManager(pgpm.lib.abstract_deploy.AbstractDeploymentManager):
     """
     Class that will manage db code deployments
     """
@@ -32,10 +34,8 @@ class DeploymentManager:
         :param config_object: SchemaConfiguration object
         :param logger: logger object
         """
-        self._logger = logger or logging.getLogger(__name__)
-        self._connection_string = connection_string
-        self._conn = psycopg2.connect(connection_string, connection_factory=pgpm.lib.utils.db.MegaConnection)
-        self._conn.init(logger)
+
+        super(DeploymentManager, self).__init__(connection_string, pgpm_schema_name, logger)
         if source_code_path:
             self._source_code_path = source_code_path
         elif config_path:
@@ -45,15 +45,12 @@ class DeploymentManager:
             self._config = config_object
         else:
             self._config = pgpm.lib.utils.config.SchemaConfiguration(config_path, config_dict, self._source_code_path)
-        self._pgpm_schema_name = pgpm_schema_name
         self._logger.debug('Loading project configuration...')
-        self._pgpm_version = pgpm.lib.utils.config.Version(pgpm.lib.version.__version__,
-                                                           pgpm.lib.utils.config.VersionTypes.python)
 
     def deploy_schema_to_db(self, mode='safe', files_deployment=None, vcs_ref=None, vcs_link=None,
                             issue_ref=None, issue_link=None, compare_table_scripts_as_int=False,
                             config_path=None, config_dict=None, config_object=None, source_code_path=None,
-                            auto_commit=False, force_table_redeploy=False):
+                            auto_commit=False):
         """
         Deploys schema
         :param files_deployment: if specific script to be deployed, only find them
@@ -67,12 +64,38 @@ class DeploymentManager:
         :param config_dict:
         :param config_object:
         :param source_code_path:
-        :return:
+        :param auto_commit:
+        :return: dictionary of the following format:
+            {
+                code: 0 if all fine, otherwise something else,
+                message: message on the output
+                function_scripts_requested: list of function files requested for deployment
+                function_scripts_deployed: list of function files deployed
+                type_scripts_requested: list of type files requested for deployment
+                type_scripts_deployed: list of type files deployed
+                view_scripts_requested: list of view files requested for deployment
+                view_scripts_deployed: list of view files deployed
+                trigger_scripts_requested: list of trigger files requested for deployment
+                trigger_scripts_deployed: list of trigger files deployed
+                table_scripts_requested: list of table files requested for deployment
+                table_scripts_deployed: list of table files deployed
+                requested_files_count: count of requested files to deploy
+                deployed_files_count: count of deployed files
+            }
+        :rtype: dict
         """
+
+        return_value = {}
+        if files_deployment:
+            return_value['function_scripts_requested'] = files_deployment
+            return_value['type_scripts_requested'] = []
+            return_value['view_scripts_requested'] = []
+            return_value['trigger_scripts_requested'] = []
+            return_value['table_scripts_requested'] = []
 
         if auto_commit:
             if mode == 'safe' and files_deployment:
-                self._logger.debug("Auto commit mode is on. Be careful/")
+                self._logger.debug("Auto commit mode is on. Be careful.")
             else:
                 self._logger.error("Auto commit deployment can only be done with file "
                                    "deployments and in safe mode for security reasons")
@@ -104,15 +127,29 @@ class DeploymentManager:
         # Get scripts
         type_scripts_dict = self._get_scripts(self._config.types_path, files_deployment,
                                               "types", self._source_code_path)
+        if not files_deployment:
+            return_value['type_scripts_requested'] = [key for key in type_scripts_dict]
+
         function_scripts_dict = self._get_scripts(self._config.functions_path, files_deployment,
                                                   "functions", self._source_code_path)
+        if not files_deployment:
+            return_value['function_scripts_requested'] = [key for key in function_scripts_dict]
+
         view_scripts_dict = self._get_scripts(self._config.views_path, files_deployment,
                                               "views", self._source_code_path)
+        if not files_deployment:
+            return_value['view_scripts_requested'] = [key for key in view_scripts_dict]
+
         trigger_scripts_dict = self._get_scripts(self._config.triggers_path, files_deployment,
                                                  "triggers", self._source_code_path)
+        if not files_deployment:
+            return_value['trigger_scripts_requested'] = [key for key in trigger_scripts_dict]
+
         table_scripts_dict_denormalised = self._get_scripts(self._config.tables_path, files_deployment,
-                                               "tables", self._source_code_path)
+                                                            "tables", self._source_code_path)
         table_scripts_dict = {os.path.split(k)[1]: v for k, v in table_scripts_dict_denormalised.items()}
+        if not files_deployment:
+            return_value['table_scripts_requested'] = [key for key in table_scripts_dict]
 
         if self._conn.closed:
             self._conn = psycopg2.connect(self._connection_string, connection_factory=pgpm.lib.utils.db.MegaConnection)
@@ -126,7 +163,7 @@ class DeploymentManager:
         if not pgpm.lib.utils.db.SqlScriptsHelper.schema_exists(cur, self._pgpm_schema_name):
             self._logger.error('Can\'t deploy schemas to DB where pgpm was not installed. '
                                'First install pgpm by running pgpm install')
-            self._close_db_conn(cur)
+            self._conn.close()
             sys.exit(1)
 
         # check installed version of _pgpm schema.
@@ -136,12 +173,12 @@ class DeploymentManager:
         if pgpm_v_script > pgpm_v_db:
             self._logger.error('{0} schema version is outdated. Please run pgpm install --upgrade first.'
                                .format(self._pgpm_schema_name))
-            self._close_db_conn(cur)
+            self._conn.close()
             sys.exit(1)
         elif pgpm_v_script < pgpm_v_db:
             self._logger.error('Deployment script\'s version is lower than the version of {0} schema '
                                'installed in DB. Update pgpm script first.'.format(self._pgpm_schema_name))
-            self._close_db_conn(cur)
+            self._conn.close()
             sys.exit(1)
 
         # Resolve dependencies
@@ -153,7 +190,7 @@ class DeploymentManager:
                 self._logger.error('There are unresolved dependencies. Deploy the following package(s) and try again:')
                 for unresolved_pkg in _list_of_unresolved_deps:
                     self._logger.error('{0}'.format(unresolved_pkg))
-                self._close_db_conn(cur)
+                self._conn.close()
                 sys.exit(1)
 
         # Prepare and execute preamble
@@ -181,7 +218,7 @@ class DeploymentManager:
                 if not pgpm.lib.utils.db.SqlScriptsHelper.schema_exists(cur, schema_name):
                     self._logger.error('Can\'t deploy scripts to schema {0}. Schema doesn\'t exist in database'
                                        .format(schema_name))
-                    self._close_db_conn(cur)
+                    self._conn.close()
                     sys.exit(1)
                 else:
                     pgpm.lib.utils.db.SqlScriptsHelper.set_search_path(cur, schema_name)
@@ -193,7 +230,7 @@ class DeploymentManager:
                 elif mode == 'safe':
                     self._logger.error('Schema already exists. It won\'t be overriden in safe mode. '
                                        'Rerun your script with "-m moderate", "-m overwrite" or "-m unsafe" flags')
-                    self._close_db_conn(cur)
+                    self._conn.close()
                     sys.exit(1)
                 elif mode == 'moderate':
                     old_schema_exists = True
@@ -231,6 +268,7 @@ class DeploymentManager:
             pgpm.lib.utils.db.SqlScriptsHelper.set_search_path(cur, schema_name)
 
         # Reordering and executing types
+        return_value['type_scripts_deployed'] = []
         if len(type_scripts_dict) > 0:
             types_script = '\n'.join([''.join(value) for key, value in type_scripts_dict.items()])
             type_drop_scripts, type_ordered_scripts, type_unordered_scripts = self._reorder_types(types_script)
@@ -247,11 +285,13 @@ class DeploymentManager:
                     if statement:
                         cur.execute(statement)
             self._logger.debug('Types loaded to schema {0}'.format(schema_name))
+            return_value['type_scripts_deployed'] = [key for key in type_scripts_dict]
         else:
             self._logger.debug('No type scripts to deploy')
 
         # Executing Table DDL scripts
         executed_table_scripts = []
+        return_value['table_scripts_deployed'] = []
         if len(table_scripts_dict) > 0:
             if compare_table_scripts_as_int:
                 sorted_table_scripts_dict = collections.OrderedDict(sorted(table_scripts_dict.items(),
@@ -277,7 +317,7 @@ class DeploymentManager:
                     pgpm.lib.utils.db.SqlScriptsHelper.set_search_path(cur, schema_name)
                 elif self._config.scope == pgpm.lib.utils.config.SchemaConfiguration.DATABASE_SCOPE:
                     cur.execute("SET search_path TO DEFAULT ;")
-                if (not is_table_executed) and value:
+                if (not is_table_executed) or (mode == 'unsafe'):
                     # if auto commit mode than every statement is called separately.
                     # this is done this way as auto commit is normally used when non transaction statements are called
                     # then this is needed to avoid "cannot be executed from a function or multi-command string" errors
@@ -290,6 +330,7 @@ class DeploymentManager:
                     self._logger.debug(value)
                     self._logger.debug('{0} executed for schema {1}'.format(key, schema_name))
                     executed_table_scripts.append(key)
+                    return_value['table_scripts_deployed'].append(key)
                 else:
                     self._logger.debug('{0} is not executed for schema {1} as it has already been executed before. '
                                        .format(key, schema_name))
@@ -297,55 +338,58 @@ class DeploymentManager:
             self._logger.debug('No Table DDL scripts to execute')
 
         # Executing functions
+        return_value['function_scripts_deployed'] = []
         if len(function_scripts_dict) > 0:
             self._logger.debug('Running functions definitions scripts')
             for key, value in function_scripts_dict.items():
-                if value:
-                    # if auto commit mode than every statement is called separately.
-                    # this is done this way as auto commit is normally used when non transaction statements are called
-                    # then this is needed to avoid "cannot be executed from a function or multi-command string" errors
-                    if auto_commit:
-                        for statement in sqlparse.split(value):
-                            if statement:
-                                cur.execute(statement)
-                    else:
-                        cur.execute(value)
+                # if auto commit mode than every statement is called separately.
+                # this is done this way as auto commit is normally used when non transaction statements are called
+                # then this is needed to avoid "cannot be executed from a function or multi-command string" errors
+                if auto_commit:
+                    for statement in sqlparse.split(value):
+                        if statement:
+                            cur.execute(statement)
+                else:
+                    cur.execute(value)
+                return_value['function_scripts_deployed'].append(key)
             self._logger.debug('Functions loaded to schema {0}'.format(schema_name))
         else:
             self._logger.debug('No function scripts to deploy')
 
         # Executing views
+        return_value['view_scripts_deployed'] = []
         if len(view_scripts_dict) > 0:
             self._logger.debug('Running views definitions scripts')
             for key, value in view_scripts_dict.items():
-                if value:
-                    # if auto commit mode than every statement is called separately.
-                    # this is done this way as auto commit is normally used when non transaction statements are called
-                    # then this is needed to avoid "cannot be executed from a function or multi-command string" errors
-                    if auto_commit:
-                        for statement in sqlparse.split(value):
-                            if statement:
-                                cur.execute(statement)
-                    else:
-                        cur.execute(value)
+                # if auto commit mode than every statement is called separately.
+                # this is done this way as auto commit is normally used when non transaction statements are called
+                # then this is needed to avoid "cannot be executed from a function or multi-command string" errors
+                if auto_commit:
+                    for statement in sqlparse.split(value):
+                        if statement:
+                            cur.execute(statement)
+                else:
+                    cur.execute(value)
+                return_value['view_scripts_deployed'].append(key)
             self._logger.debug('Views loaded to schema {0}'.format(schema_name))
         else:
             self._logger.debug('No view scripts to deploy')
 
         # Executing triggers
+        return_value['trigger_scripts_deployed'] = []
         if len(trigger_scripts_dict) > 0:
             self._logger.debug('Running trigger definitions scripts')
             for key, value in trigger_scripts_dict.items():
-                if value:
-                    # if auto commit mode than every statement is called separately.
-                    # this is done this way as auto commit is normally used when non transaction statements are called
-                    # then this is needed to avoid "cannot be executed from a function or multi-command string" errors
-                    if auto_commit:
-                        for statement in sqlparse.split(value):
-                            if statement:
-                                cur.execute(statement)
-                    else:
-                        cur.execute(value)
+                # if auto commit mode than every statement is called separately.
+                # this is done this way as auto commit is normally used when non transaction statements are called
+                # then this is needed to avoid "cannot be executed from a function or multi-command string" errors
+                if auto_commit:
+                    for statement in sqlparse.split(value):
+                        if statement:
+                            cur.execute(statement)
+                else:
+                    cur.execute(value)
+                return_value['trigger_scripts_deployed'].append(key)
             self._logger.debug('Triggers loaded to schema {0}'.format(schema_name))
         else:
             self._logger.debug('No trigger scripts to deploy')
@@ -391,9 +435,29 @@ class DeploymentManager:
         # Commit transaction
         self._conn.commit()
 
-        self._close_db_conn(cur)
+        self._conn.close()
 
-        return 0
+        deployed_files_count = len(return_value['function_scripts_deployed']) + \
+                               len(return_value['type_scripts_deployed']) + \
+                               len(return_value['view_scripts_deployed']) + \
+                               len(return_value['trigger_scripts_deployed']) + \
+                               len(return_value['table_scripts_deployed'])
+
+        requested_files_count = len(return_value['function_scripts_requested']) + \
+                                len(return_value['type_scripts_requested']) + \
+                                len(return_value['view_scripts_requested']) + \
+                                len(return_value['trigger_scripts_requested']) + \
+                                len(return_value['table_scripts_requested'])
+
+        return_value['deployed_files_count'] = deployed_files_count
+        return_value['requested_files_count'] = requested_files_count
+        if deployed_files_count == requested_files_count:
+            return_value['code'] = self.DEPLOYMENT_OUTPUT_CODE_OK
+            return_value['message'] = 'OK'
+        else:
+            return_value['code'] = self.DEPLOYMENT_OUTPUT_CODE_NOT_ALL_DEPLOYED
+            return_value['message'] = 'Not all requested files were deployed'
+        return return_value
 
     def _get_scripts(self, scripts_path_rel, files_deployment, script_type, project_path):
         """
@@ -404,8 +468,8 @@ class DeploymentManager:
         if scripts_path_rel:
 
             self._logger.debug('Getting scripts with {0} definitions'.format(script_type))
-            scripts_dict = pgpm.lib.utils.collect_scripts_from_sources(scripts_path_rel, files_deployment,
-                                                                       project_path, False, self._logger)
+            scripts_dict = pgpm.lib.utils.misc.collect_scripts_from_sources(scripts_path_rel, files_deployment,
+                                                                            project_path, False, self._logger)
             if len(scripts_dict) == 0:
                 self._logger.debug('No {0} definitions were found in {1} folder'.format(script_type, scripts_path_rel))
         else:
@@ -464,7 +528,7 @@ class DeploymentManager:
         for _type_key in _type_statements_dict.keys():
             for _type_key_sub, _type_value in _type_statements_dict.items():
                 if _type_key != _type_key_sub:
-                    if pgpm.lib.utils.find_whole_word(_type_key)(_type_value['script']):
+                    if pgpm.lib.utils.misc.find_whole_word(_type_key)(_type_value['script']):
                         _type_value['deps'].append(_type_key)
         # now let's add order to type scripts and put them ordered to list
         _deps_unresolved = True
@@ -498,11 +562,3 @@ class DeploymentManager:
                     _deps_unresolved = True
         return type_drop_scripts, type_ordered_scripts, type_unordered_scripts
 
-    def _close_db_conn(self, cur):
-        """
-        Close DB connection and cursor
-        """
-        self._logger.debug('Closing connection to {0}...'.format(self._conn.dsn))
-        cur.close()
-        self._conn.close()
-        self._logger.debug('Connection to {0} closed.'.format(self._conn.dsn))

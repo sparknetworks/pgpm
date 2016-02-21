@@ -7,13 +7,15 @@ import pkg_resources
 import psycopg2
 import re
 
+import pgpm.lib.abstract_deploy
 import pgpm.lib.utils
 import pgpm.lib.utils.db
+import pgpm.lib.utils.misc
 import pgpm.lib.version
 import pgpm.lib.utils.config
 
 
-class InstallationManager:
+class InstallationManager(pgpm.lib.abstract_deploy.AbstractDeploymentManager):
     """
     Class that will manage pgpm installation
     """
@@ -23,16 +25,9 @@ class InstallationManager:
         :param connection_string: connection string consumable by DBAPI 2.0
         :param logger: logger object
         """
+        super(InstallationManager, self).__init__(connection_string, pgpm_schema_name, logger)
         self._main_module_name = 'pgpm'
-
-        self._connection_string = connection_string
-        self._conn = psycopg2.connect(connection_string, connection_factory=pgpm.lib.utils.db.MegaConnection)
-        self._pgpm_schema_name = pgpm_schema_name
         self._pgpm_schema_subclass = pgpm_schema_subclass
-        self._pgpm_version = pgpm.lib.utils.config.Version(pgpm.lib.version.__version__,
-                                                           pgpm.lib.utils.config.VersionTypes.python)
-        self._logger = logger or logging.getLogger(__name__)
-        self._conn.init(logger)
 
     def install_pgpm_to_db(self, user_roles, upgrade=False):
         """
@@ -45,8 +40,8 @@ class InstallationManager:
         cur = self._conn.cursor()
 
         # get pgpm functions
-        scripts_dict = pgpm.lib.utils.collect_scripts_from_sources('lib/db_scripts/functions', False, '.', True,
-                                                                   self._logger)
+        scripts_dict = pgpm.lib.utils.misc.collect_scripts_from_sources('lib/db_scripts/functions', False, '.', True,
+                                                                        self._logger)
 
         # get current user
         cur.execute(pgpm.lib.utils.db.SqlScriptsHelper.current_user_sql)
@@ -88,11 +83,11 @@ class InstallationManager:
             elif pgpm_v_script < pgpm_v_db:
                 self._logger.error('Deployment script\'s version is lower than the version of {0} schema '
                                    'installed in DB. Update pgpm script first.'.format(self._pgpm_schema_name))
-                self._close_db_conn(cur)
+                self._conn.close()
                 sys.exit(1)
             else:
                 self._logger.error('Can\'t install pgpm as schema {0} already exists'.format(self._pgpm_schema_name))
-                self._close_db_conn(cur)
+                self._conn.close()
                 sys.exit(1)
         else:
             # Prepare and execute preamble
@@ -150,7 +145,7 @@ class InstallationManager:
         # Commit transaction
         self._conn.commit()
 
-        self._close_db_conn(cur)
+        self._conn.close()
 
         return 0
 
@@ -184,7 +179,7 @@ class InstallationManager:
         # Commit transaction
         self._conn.commit()
 
-        self._close_db_conn(cur)
+        self._conn.close()
 
         return 0
 
@@ -219,14 +214,5 @@ class InstallationManager:
         if not migrate_or_leave:
             self._logger.error('{0} schema version is outdated. Please run pgpm install --upgrade first.'
                                .format(self._pgpm_schema_name))
-            self._close_db_conn(cur)
+            self._conn.close()
             sys.exit(1)
-
-    def _close_db_conn(self, cur):
-        """
-        Close DB connection and cursor
-        """
-        self._logger.debug('Closing connection to {0}...'.format(self._conn.dsn))
-        cur.close()
-        self._conn.close()
-        self._logger.debug('Connection to {0} closed.'.format(self._conn.dsn))

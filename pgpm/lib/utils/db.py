@@ -74,6 +74,21 @@ class MegaConnection(psycopg2.extensions.connection):
         """
         self.logger = logger or self.logger
 
+    def close(self, rollback=True):
+        # rollback or commit only if connection has transaction in progress
+        if self.status == psycopg2.extensions.STATUS_IN_TRANSACTION:
+            # need to do as some middlewares like pgBouncer incorrectly react to implicit rollback
+            # see more here: http://initd.org/psycopg/docs/connection.html#connection.close
+            if rollback:
+                self.rollback()
+                self.logger.debug('Active transaction rolled back.')
+            else:
+                self.commit()
+                self.logger.debug('Active transaction committed.')
+        r_value = super(MegaConnection, self).close()
+        self.logger.debug('Connection closed.')
+        return r_value
+
 
 class MegaCursor(psycopg2.extensions.cursor):
     def __init__(self, *args, **kwargs):
@@ -86,10 +101,10 @@ class MegaCursor(psycopg2.extensions.cursor):
     def execute(self, query, args=None):
         try:
             return super(MegaCursor, self).execute(query, args)
-        except:
+        except Exception:
             raise
         finally:
-            self.connection.logger.debug('Executing query: {0}'.format(self.query.decode('utf-8')))
+            self.connection.logger.debug('Executed query: {0}'.format(self.query.decode('utf-8')))
             noticies = self.connection.fetch_new_notices()
             if noticies:
                 for notice in noticies:
@@ -98,12 +113,19 @@ class MegaCursor(psycopg2.extensions.cursor):
     def callproc(self, procname, args=None):
         try:
             return super(MegaCursor, self).callproc(procname, args)
+        except Exception:
+            raise
         finally:
-            self.connection.logger.debug('Calling stored procedure: {0}'.format(self.query.decode('utf-8')))
+            self.connection.logger.debug('Called stored procedure: {0}'.format(self.query.decode('utf-8')))
             noticies = self.connection.fetch_new_notices()
             if noticies:
                 for notice in noticies:
                     self.connection.logger.debug(notice)
+
+    def close(self):
+        r_value = super(MegaCursor, self).close()
+        self.connection.logger.debug('Cursor closed.')
+        return r_value
 
 
 class SqlScriptsHelper:
