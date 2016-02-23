@@ -115,7 +115,8 @@ class InstallationManager(pgpm.lib.abstract_deploy.AbstractDeploymentManager):
             # Executing migration scripts after as they contain triggers that trigger functions that were created on top
             for file_info in migration_files_list:
                 # Python 3.x doesn't have format for byte strings so we have to convert
-                migration_script = pkg_resources.resource_string(self._main_module_name, 'lib/db_scripts/migrations/{0}'.format(file_info))\
+                migration_script = pkg_resources.resource_string(self._main_module_name,
+                                                                 'lib/db_scripts/migrations/{0}'.format(file_info))\
                     .decode('utf-8').format(schema_name=self._pgpm_schema_name)
                 self._logger.debug('Running version upgrade script {0}'.format(file_info))
                 self._logger.debug(migration_script)

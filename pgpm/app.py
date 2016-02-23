@@ -123,10 +123,18 @@ import colorama
 import getpass
 import pgpm.utils.config
 import pgpm.utils.issue_trackers
+import httplib2
 
+from oauth2client.service_account import ServiceAccountCredentials
+from apiclient import discovery
+from apiclient import errors
 from docopt import docopt
 
 from pgpm import settings
+
+import base64
+from email.mime.text import MIMEText
+import mimetypes
 
 
 # getting logging
@@ -268,9 +276,11 @@ def main():
                 if arguments['--issue-ref'] and ('issue-tracker' in global_config.global_config_dict):
                     target_str = 'environment: *' + connections_list[0]['environment'] + '*, product: *' + \
                                  connections_list[0]['product'] + '*, DBs: *' + ', '.join(target_names_list) + '*'
-                    _comment_issue_tracker(arguments, global_config,
-                                           target_str,
-                                           config_object, deploy_result)
+                    _comment_issue_tracker(arguments, global_config, target_str, config_object, deploy_result)
+                if 'email' in global_config.global_config_dict:
+                    target_str = 'environment: *' + connections_list[0]['environment'] + '*, product: *' + \
+                                 connections_list[0]['product'] + '*, DBs: *' + ', '.join(target_names_list) + '*'
+                    _send_summary_email(arguments, global_config, target_str, config_object, deploy_result)
             else:
                 _emit_no_set_found(arguments['<environment_name>'], arguments['<product_name>'])
 
@@ -285,8 +295,7 @@ def main():
             if arguments['--issue-ref'] and ('issue-tracker' in global_config.global_config_dict):
                 conn_parsed = pgpm.lib.utils.db.parse_connection_string_psycopg2(arguments['<connection_string>'])
                 target_str = 'host: *' + conn_parsed['host'] + '*, DB: *' + conn_parsed['dbname'] + '*'
-                _comment_issue_tracker(arguments, global_config, target_str,
-                                       config_object, deploy_result)
+                _comment_issue_tracker(arguments, global_config, target_str, config_object, deploy_result)
 
     elif arguments['list']:
         if arguments['set']:
@@ -442,6 +451,45 @@ def _emit_no_set_found(environment_name, product_name):
     sys.stdout.write('\n')
     logger.warning('No connections found in environment: {0} for product: {1}'
                    .format(environment_name, product_name))
+
+
+def _create_message(sender, to, subject, message_text):
+    """
+    Create a message for an email.
+    :param sender: Email address of the sender.
+    :param to: Email address of the receiver.
+    :param subject: The subject of the email message.
+    :param message_text: The text of the email message.
+    :return: An object containing a base64 encoded email object.
+    """
+    message = MIMEText(message_text)
+    message['to'] = to
+    message['from'] = sender
+    message['subject'] = subject
+    # return {'raw': str(base64.urlsafe_b64encode(bytes(message.as_string(), 'UTF-8')))}
+    return {'raw': base64.urlsafe_b64encode(message.as_string())}
+
+
+def _send_summary_email(arguments, global_config, target_str, config_object, deploy_result):
+    if global_config.global_config_dict['email']['type'] == "GMAIL":
+        scopes = ['https://www.googleapis.com/auth/gmail.send']
+        credentials = ServiceAccountCredentials.from_json_keyfile_dict(
+            global_config.global_config_dict['email']['credentials'], scopes)
+        logger.info('Sending email about deployment.')
+        http_auth = credentials.authorize(httplib2.Http())
+        gmail = discovery.build('gmail', 'v1', http=http_auth)
+        try:
+            message = (gmail.users().messages().send(
+                userId="me",
+                body=_create_message(global_config.global_config_dict['email']['from'],
+                                     global_config.global_config_dict['email']['to'],
+                                     global_config.global_config_dict['email']['subject'],
+                                     global_config.global_config_dict['email']['body']))
+                       .execute())
+            print('Message Id: %{0}'.format(message['id']))
+            return message
+        except errors.HttpError as error:
+            print('An error occurred: {0}'.format(error))
 
 
 def _comment_issue_tracker(arguments, global_config, target_string, config_object, deploy_result):
