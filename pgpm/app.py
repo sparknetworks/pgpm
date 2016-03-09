@@ -110,6 +110,7 @@ Options:
 """
 import logging
 import os
+import smtplib
 from pprint import pprint
 
 import pgpm.lib.install
@@ -442,6 +443,22 @@ def _emit_no_set_found(environment_name, product_name):
     sys.stdout.write('\n')
     logger.warning('No connections found in environment: {0} for product: {1}'
                    .format(environment_name, product_name))
+
+
+def _send_mail(arguments, global_config, target_string, config_object, deploy_result):
+    if global_config.global_config_dict['email']['type'] == "SMTP":
+        logger.info('Sending an email about deployment')
+
+        mail_message = ''
+
+        smtp = smtplib.SMTP(global_config.global_config_dict['email']['host'],
+                            global_config.global_config_dict['email']['port'])
+        smtp.starttls()
+        smtp.login(global_config.global_config_dict['email']['credentials']['username'],
+                   global_config.global_config_dict['email']['credentials']['password'])
+        smtp.sendmail(global_config.global_config_dict['email']['from'],
+                      global_config.global_config_dict['email']['to'], mail_message)
+        smtp.quit()
 
 
 def _comment_issue_tracker(arguments, global_config, target_string, config_object, deploy_result):
