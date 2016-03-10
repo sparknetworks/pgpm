@@ -15,7 +15,7 @@ Usage:
                 [--issue-ref <issue_reference>] [--issue-link <issue_link>]
                 [--compare-table-scripts-as-int]
                 [--log-file <log_file_name>] [--global-config <global_config_file_path>]
-                [--auto-commit]
+                [--auto-commit] [--send-email]
   pgpm execute (<connection_string> | set <environment_name> <product_name> ([--except] [<unique_name>...])
                 --query <query>
                 [-u | --user <user_role>])
@@ -105,6 +105,7 @@ Options:
   --global-config <global_config_file_path>
                             path to a global-config file. If global gonfig exists also in ~/.pgpmconfig file then
                             two dicts are merged (file formats are JSON).
+  --send-email              Send mail about deployment. Works only if email block exists in global config
 
 
 """
@@ -266,12 +267,15 @@ def main():
                     else:
                         target_names_list.append(connection_dict['dbname'])
 
-                if arguments['--issue-ref'] and ('issue-tracker' in global_config.global_config_dict):
-                    target_str = 'environment: *' + connections_list[0]['environment'] + '*, product: *' + \
-                                 connections_list[0]['product'] + '*, DBs: *' + ', '.join(target_names_list) + '*'
-                    _comment_issue_tracker(arguments, global_config,
-                                           target_str,
-                                           config_object, deploy_result)
+                if deploy_result['deployed_files_count'] > 0:
+                    target_str = 'environment: ' + connections_list[0]['environment'] + ', product: ' + \
+                                 connections_list[0]['product'] + ', DBs: ' + ', '.join(target_names_list)
+                    if arguments['--issue-ref'] and ('issue-tracker' in global_config.global_config_dict):
+                        _comment_issue_tracker(arguments, global_config,
+                                               target_str,
+                                               config_object, deploy_result)
+                    if arguments['--send-email'] and ('email' in global_config.global_config_dict):
+                        _send_mail(arguments, global_config, target_str, config_object, deploy_result)
             else:
                 _emit_no_set_found(arguments['<environment_name>'], arguments['<product_name>'])
 
@@ -283,11 +287,14 @@ def main():
                            compare_table_scripts_as_int=arguments['--compare-table-scripts-as-int'],
                            auto_commit=arguments['--auto-commit'],
                            config_object=config_object)
-            if arguments['--issue-ref'] and ('issue-tracker' in global_config.global_config_dict):
+            if deploy_result['deployed_files_count'] > 0:
                 conn_parsed = pgpm.lib.utils.db.parse_connection_string_psycopg2(arguments['<connection_string>'])
-                target_str = 'host: *' + conn_parsed['host'] + '*, DB: *' + conn_parsed['dbname'] + '*'
-                _comment_issue_tracker(arguments, global_config, target_str,
-                                       config_object, deploy_result)
+                target_str = 'host: ' + conn_parsed['host'] + ', DB: ' + conn_parsed['dbname']
+                if arguments['--issue-ref'] and ('issue-tracker' in global_config.global_config_dict):
+                    _comment_issue_tracker(arguments, global_config, target_str,
+                                           config_object, deploy_result)
+                if arguments['--send-email'] and ('email' in global_config.global_config_dict):
+                    _send_mail(arguments, global_config, target_str, config_object, deploy_result)
 
     elif arguments['list']:
         if arguments['set']:
@@ -449,13 +456,86 @@ def _send_mail(arguments, global_config, target_string, config_object, deploy_re
     if global_config.global_config_dict['email']['type'] == "SMTP":
         logger.info('Sending an email about deployment')
 
-        mail_message = ''
+        issue_ref_subject_text = ''
+        issue_ref_body_text = ''
+        if arguments['--issue-ref']:
+            issue_ref_subject_text = "({0})".format(arguments['--issue-ref'])
+            if ("issue-tracker" in global_config.global_config_dict) and \
+                    ("issue-path-template" in global_config.global_config_dict["issue-tracker"]):
+                issue_ref_body_text = \
+                    "({0})".format(global_config.global_config_dict["issue-tracker"]["issue-path-template"]
+                                   .format(issue_ref=arguments['--issue-ref']))
+        else:
+            issue_ref_body_text = "({0})".format(arguments['--issue-ref'])
+
+        _schema_row = ''
+        if config_object.scope == config_object.SCHEMA_SCOPE:
+            _schema_row += '<tr><th>Schema name</th><td>'
+            if config_object.subclass == config_object.BASIC_SUBCLASS:
+                _schema_row += config_object.name
+            elif config_object.subclass == config_object.VERSIONED_SUBCLASS:
+                _schema_row += config_object.name + '_' + config_object.version.to_string()
+            _schema_row += '</td></tr>'
+
+        _files_row = ''
+        if arguments['--file']:
+            _files_row += '<tr><th>Files deployed</th><td>'
+            if deploy_result['function_scripts_deployed']:
+                _files_row += ',<br />'.join(deploy_result['function_scripts_deployed'])
+            if deploy_result['type_scripts_deployed']:
+                _files_row += ',<br />'.join(deploy_result['type_scripts_deployed'])
+            if deploy_result['view_scripts_deployed']:
+                _files_row += ',<br />'.join(deploy_result['view_scripts_deployed'])
+            if deploy_result['trigger_scripts_deployed']:
+                _files_row += ',<br />'.join(deploy_result['trigger_scripts_deployed'])
+            if deploy_result['table_scripts_deployed']:
+                _files_row += ',<br />'.join(deploy_result['table_scripts_deployed'])
+            _files_row += '</td></tr>'
+        else:
+            _files_row += '<tr><th>Files deployed</th><td>all</td></tr>'
+
+        _git_commit_row = ''
+        _git_repo_row = ''
+        if pgpm.lib.utils.vcs.is_git_directory(os.path.abspath('.')):
+            _git_repo_row += '<tr><th>GIT repo</th><td>'
+            _git_repo_row += pgpm.lib.utils.vcs.get_git_remote(os.path.abspath('.'))
+            _git_repo_row += '</td></tr>'
+            if not arguments['--vcs-ref']:
+                _git_commit_row += '<tr><th>GIT commit</th><td>'
+                _git_commit_row += pgpm.lib.utils.vcs.get_git_revision_hash(os.path.abspath('.'))
+                _git_commit_row += '</td></tr>'
+        pkg_desc_text = """
+        <table>
+            <tr>
+                <th>Package Name</th>
+                <td>{0}</td>
+            </tr>
+            {1}
+            {2}
+            {3}
+            {4}
+        </table>
+        """.format(config_object.name, _schema_row, _files_row, _git_repo_row, _git_commit_row)
+
+        mail_message = "From: {0}\r\nTo: {1}\r\nMIME-Version: 1.0\r\nContent-type: text/html\r\nSubject: {2}\r\n{3}"\
+            .format(global_config.global_config_dict['email']['from'], global_config.global_config_dict['email']['to'],
+                    global_config.global_config_dict['email']['subject']
+                    .format(issue_ref=issue_ref_subject_text, target_subject=target_string),
+                    global_config.global_config_dict['email']['body']
+                    .format(issue_ref=issue_ref_body_text, target=target_string, package_description=pkg_desc_text))
 
         smtp = smtplib.SMTP(global_config.global_config_dict['email']['host'],
                             global_config.global_config_dict['email']['port'])
-        smtp.starttls()
-        smtp.login(global_config.global_config_dict['email']['credentials']['username'],
-                   global_config.global_config_dict['email']['credentials']['password'])
+        # smtp.set_debuglevel(1)
+        if global_config.global_config_dict['email']['TLS'] == True:
+            smtp.starttls()
+        if 'credentials' in global_config.global_config_dict['email']:
+            try:
+                smtp.login(global_config.global_config_dict['email']['credentials']['username'],
+                           global_config.global_config_dict['email']['credentials']['password'])
+            except smtplib.SMTPAuthenticationError:
+                logger.warning('SMTP authentication failed though required in the global config. '
+                               'Will try to send email without authentication')
         smtp.sendmail(global_config.global_config_dict['email']['from'],
                       global_config.global_config_dict['email']['to'], mail_message)
         smtp.quit()

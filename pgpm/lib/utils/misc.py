@@ -53,7 +53,7 @@ def collect_scripts_from_sources(script_paths, files_deployment,  project_path='
                             if script_paths[i] in list_file_full_path:
                                 file_content = io.open(list_file_full_path, 'r', -1, 'utf-8-sig', 'ignore').read()
                                 if file_content:
-                                    scripts_dict[list_file_full_path] = file_content
+                                    scripts_dict[list_file_name] = file_content
                                     logger.debug('File {0} collected.'.format(list_file_full_path))
                                 else:
                                     logger.debug('File {0} not collected as it\'s empty.'.format(list_file_full_path))
