@@ -38,7 +38,7 @@ select drop_schema_smart('no_such_schema');
 -- Test Case : contains tables
 -- ============================================
 select drop_schema_smart('test_case_ds2',false);
--- expected result : 
+-- expected result :
 --	Output message : ERROR:  message: Schema contains at least one table!
 
 
@@ -47,16 +47,15 @@ select drop_schema_smart('test_case_ds2',false);
 -- ============================
 select test_case_ds3.func_sleep(120); --run from different session ;
 select drop_schema_smart('test_case_ds3',false); --run from current session
--- expected result : 
+-- expected result :
 --	Output message : ERROR:  message: Schema test_case_ds3 currently in use
-
 
 
 -- ===================
 -- Test Case : Dry Run
 -- ===================
 select drop_schema_smart('test_case_ds3');
--- expected result : 
+-- expected result :
 --	Output messageses : All checks are ok, last message : THIS IS THE DRY RUN. TO DROP SCHEMA test_case_ds3 PASS FALSE TO DRY RUN PARAMETER
 
 
@@ -66,7 +65,7 @@ select drop_schema_smart('test_case_ds3');
 -- ==============================
 drop table if exists test_case_ds1.dep_tab1;
 select drop_schema_smart('test_case_ds1',false);
--- expected result : 
+-- expected result :
 --	Output messageses : ERROR:  message: Schema has type dependencies with other schemas, please contact DBA team.
 
 
@@ -75,7 +74,7 @@ select drop_schema_smart('test_case_ds1',false);
 -- ==============================
 drop table if exists test_case_ds2.ref_tab1;
 select drop_schema_smart('test_case_ds2',false);
--- expected result : 
+-- expected result :
 --	NOTICE:	Dropping schema test_case_ds2 cascading...
 --	DETAIL:  drop cascades to type test_case_ds2.ref_type1
 --		 drop cascades to function test_case_ds2.ref_func(test_case_ds1.dep_type1)
