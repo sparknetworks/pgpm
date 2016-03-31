@@ -1,0 +1,9 @@
+{
+    "description"    : "Affinitas Audit Model" ,
+    "name"           : "_audit",
+    "version"        : "00_01_00",
+    "class"          : "???",
+    "subclass"       : "???",
+    "types_path"     : "types",
+    "tables_path"    : "tables"
+}
