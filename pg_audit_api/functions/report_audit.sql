@@ -2,17 +2,17 @@
 --
 --
 
-set SEARCH_PATH to audit,public;
+-- TODO: example reports
+DROP FUNCTION report_audit();
 
-DROP FUNCTION report_audit() ;
-
-CREATE OR REPLACE FUNCTION report_audit() RETURNS text AS $body$
+CREATE OR REPLACE FUNCTION report_audit()
+  RETURNS TEXT AS $body$
 DECLARE
 BEGIN
-  RETURN 'Not yet implemented'::text;
+  RETURN 'Not yet implemented' :: TEXT;
 END;
 $body$
-language 'plpgsql';
+LANGUAGE 'plpgsql';
 
 COMMENT ON FUNCTION report_audit() IS $body$
 Return (filtered) audit-trail.

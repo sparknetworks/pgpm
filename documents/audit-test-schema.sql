@@ -1,4 +1,3 @@
-
 DROP TABLE IF EXISTS ae_c;
 DROP FUNCTION IF EXISTS last_modified_before();
 DROP TABLE IF EXISTS ae_b;

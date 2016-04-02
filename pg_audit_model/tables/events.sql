@@ -2,13 +2,13 @@
 -- journal of all changes to all auditest tables
 --
 CREATE TABLE events (
-  nspname   TEXT           NOT NULL,
-  relname   TEXT           NOT NULL,
-  usename   TEXT           NOT NULL,
-  trans_ts  TIMESTAMPTZ    NOT NULL,
-  trans_id  BIGINT         NOT NULL,
-  trans_sq  INTEGER        NOT NULL,
-  operation op_types       NOT NULL,
+  nspname   TEXT        NOT NULL,
+  relname   TEXT        NOT NULL,
+  usename   TEXT        NOT NULL,
+  trans_ts  TIMESTAMPTZ NOT NULL,
+  trans_id  BIGINT      NOT NULL,
+  trans_sq  INTEGER     NOT NULL,
+  operation op_types    NOT NULL,
   rowdata   JSONB,
   CONSTRAINT events_pkey PRIMARY KEY (trans_ts, trans_id, trans_sq)  -- TODO: find optimal order
 );
