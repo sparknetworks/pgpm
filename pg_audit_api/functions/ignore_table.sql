@@ -2,18 +2,19 @@
 ---
 ---
 
-CREATE OR REPLACE FUNCTION ignore_table(target_table regclass) RETURNS void AS $body$
+CREATE OR REPLACE FUNCTION ignore_table(target_table REGCLASS)
+  RETURNS VOID AS $body$
 DECLARE
 BEGIN
-    -- TODO: take final snapshot
-    EXECUTE 'DROP TRIGGER IF EXISTS audit_trigger_row ON ' || quote_ident(target_table::TEXT);
-    EXECUTE 'DROP TRIGGER IF EXISTS audit_trigger_stm ON ' || quote_ident(target_table::TEXT);
+  PERFORM take_snapshot(target_table);
+  EXECUTE 'DROP TRIGGER IF EXISTS audit_trigger_row ON ' || quote_ident(target_table :: TEXT);
+  EXECUTE 'DROP TRIGGER IF EXISTS audit_trigger_stm ON ' || quote_ident(target_table :: TEXT);
 END;
 $body$
-language 'plpgsql';
+LANGUAGE 'plpgsql';
 
-COMMENT ON FUNCTION audit.audit_table(regclass) IS $body$
-Remove auditing from a table.
+COMMENT ON FUNCTION audit.audit_table(REGCLASS) IS $body$
+Remove auditing triggers from a table and take a final snapshot.
 
 Arguments:
    target_table:     Table name, schema qualified if not on search_path

@@ -1,9 +1,11 @@
 -- install audit schema
 -- set up test tables with auditdb-example sql.
 
-SELECT audit.leave_table('ae_a');
-SELECT audit.leave_table('ae_b');
-SELECT audit.leave_table('ae_c');
+set search_path to audit, public;
+
+SELECT audit.ignore_table('ae_a');
+SELECT audit.ignore_table('ae_b');
+SELECT audit.ignore_table('ae_c');
 
 
 TRUNCATE audit.events;
@@ -11,11 +13,10 @@ TRUNCATE ae_a CASCADE;
 TRUNCATE ae_b;
 TRUNCATE ae_c;
 
-SELECT audit.audit_table('ae_a');
-SELECT audit.audit_table('ae_b');
-SELECT audit.audit_table('ae_c');
+SELECT audit.watch_table('ae_a');
+SELECT audit.watch_table('ae_b');
+SELECT audit.watch_table('ae_c');
 
-TRUNCATE ae_c; -- truncate empty tabel results in event entry with no rows
 
 INSERT INTO ae_a (a_text, a_number, a_decimal) VALUES
   ('Lorem', 382, 223.93992),
@@ -24,8 +25,7 @@ INSERT INTO ae_a (a_text, a_number, a_decimal) VALUES
   ('sit', 722, 63.491),
   ('amet.', 173, 649.2900000);
 
-SELECT *
-FROM ae_a;
+SELECT audit.ignore_table('ae_a');
 
 INSERT INTO ae_b (a_text, a_date, a_time) VALUES
   ('dolor', '2013-08-08' :: DATE, '12:15' :: TIME),
@@ -55,6 +55,8 @@ INSERT INTO ae_b (a_text, a_date, a_time) VALUES
   ('ipsum', '1934-01-11' :: DATE, '03:55' :: TIME);
 
 
+TRUNCATE ae_c; -- truncate empty tabel results in event entry with no rows
+
 INSERT INTO ae_c (test_key, test_value) VALUES
   ('d0ccb29413dc0dda46a58cd68b601349', 'Lorem ipsum dolor sit amet,   '),
   ('306dba61ebc32ab098a9d4adc38a3a7d', 'consectetur adipiscing elit.  '),
@@ -77,6 +79,8 @@ WHERE test_key = '92dcc301ec35ed74eaaf68978fc56b94';
 
 DELETE FROM ae_c;
 
+SELECT audit.ignore_table('ae_c');
+SELECT audit.ignore_table('ae_b');
 SELECT *
 FROM audit.events;
 
