@@ -1,4 +1,4 @@
-CREATE OR REPLACE FUNCTION drop_schema_smart(p_schema_name TEXT, p_dry_run BOOLEAN DEFAULT TRUE)
+CREATE OR REPLACE FUNCTION drop_schema_smart(p_schema_name text, p_dry_run boolean DEFAULT true, p_strict boolean DEFAULT false)
   RETURNS VOID AS
 $BODY$
 -----------------------------------------------------------------------------------------------------------------------
@@ -16,6 +16,9 @@ $BODY$
 -- perform dry run or not
 --	p_dry_run=true --> run function in Dry mode
 --	p_dry_run=false --> run function in drop mode
+--
+-- @param p_strict
+-- throw the error message when dropping the schema that doesn't not exist or only return the warning ( default )
 --
 -- --------------------------------------------------------------------------------------------------------------------
 
@@ -37,7 +40,13 @@ BEGIN
                 FROM information_schema.schemata
                 WHERE schema_name = p_schema_name)
   THEN
-    RAISE EXCEPTION E'Schema % does not exist\n', p_schema_name;
+    IF p_strict is TRUE
+    THEN
+	      RAISE EXCEPTION E'Schema % does not exist', p_schema_name;
+    ELSE
+        RAISE WARNING 'Schema % does not exist', p_schema_name;
+        RETURN;
+    END IF;
   END IF;
 
   -- check table existance
