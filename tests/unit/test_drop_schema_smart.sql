@@ -30,8 +30,14 @@ create or replace function test_case_ds3.func_sleep(sec_sleep integer) RETURNS v
 -- Test Case : nonexistent Schema
 -- =====================================
 select drop_schema_smart('no_such_schema');
--- expected result : Nächster
---	Output message : ERROR:  message: Schema no_such_schema does not exist
+-- expected result :
+--	Output message : WARNING: Schema no_such_schema does not exist
+
+
+-- test strict mode ( last parameter = true )
+select drop_schema_smart('no_such_schema',true,true);
+-- expected result :
+--	Output message : ERROR: Schema no_such_schema does not exist
 
 
 -- ============================================
