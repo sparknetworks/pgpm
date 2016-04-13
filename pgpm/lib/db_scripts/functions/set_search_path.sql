@@ -1,5 +1,5 @@
 CREATE OR REPLACE FUNCTION set_search_path(p_schema_name TEXT, p_v_req TEXT)
-    RETURNS json AS
+    RETURNS JSON AS
 $BODY$
 ---
 -- @description
@@ -20,30 +20,32 @@ $BODY$
 -- JSON with schema names and exact versions or exception if not found
 ---
 DECLARE
-    l_search_path TEXT;
-    l_search_path_deps TEXT;
-    l_listen_text TEXT;
+    l_search_path         TEXT;
+    l_search_path_deps    TEXT;
+    l_listen_text         TEXT;
 
     l_pkg_version_wrapped RECORD;
-    l_pkg_version RECORD;
+    l_pkg_version         RECORD;
 
-    return_value json;
+    return_value          JSON;
 BEGIN
 
     SET search_path TO _pgpm;
-    SELECT _find_schema(p_schema_name, p_v_req) AS version INTO l_pkg_version_wrapped;
+    SELECT _find_schema(p_schema_name, p_v_req) AS version
+    INTO l_pkg_version_wrapped;
     l_pkg_version := l_pkg_version_wrapped.version;
 
     l_search_path := l_pkg_version.pkg_name || '_' ||
-                     l_pkg_version.pkg_v_major::text || '_' ||
-                     l_pkg_version.pkg_v_minor::text || '_' ||
-                     l_pkg_version.pkg_v_patch::text;
+                     l_pkg_version.pkg_v_major :: TEXT || '_' ||
+                     l_pkg_version.pkg_v_minor :: TEXT || '_' ||
+                     l_pkg_version.pkg_v_patch :: TEXT;
 
     SELECT string_agg(pkg_name || '_' || pkg_v_major || '_' || pkg_v_minor || '_' || pkg_v_patch, ', ')
     FROM packages
     WHERE pkg_id IN (
-        SELECT pkg_link_dep_id from package_dependencies
-        JOIN packages ON pkg_id = l_pkg_version.pkg_id
+        SELECT pkg_link_dep_id
+        FROM package_dependencies
+            JOIN packages ON pkg_id = l_pkg_version.pkg_id
         WHERE pkg_link_core_id = pkg_id
     )
     INTO l_search_path_deps;
@@ -54,11 +56,11 @@ BEGIN
     EXECUTE 'LISTEN ' || l_listen_text;
 
     RAISE INFO '%', l_search_path;
-    PERFORM set_config('search_path', l_search_path || ', public', false);
+    PERFORM set_config('search_path', l_search_path || ', public', FALSE);
 
     return_value := row_to_json(l_pkg_version);
     RETURN return_value;
 
 END;
 $BODY$
-    LANGUAGE 'plpgsql' VOLATILE SECURITY DEFINER;
+LANGUAGE 'plpgsql' VOLATILE SECURITY DEFINER;

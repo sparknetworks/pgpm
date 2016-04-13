@@ -18,7 +18,7 @@ $BODY$
 BEGIN
 
     INSERT INTO table_evolutions_log (t_evo_file_name, t_evo_package)
-        VALUES (p_t_evo_file_name, p_t_evo_package);
+    VALUES (p_t_evo_file_name, p_t_evo_package);
 END;
 $BODY$
 LANGUAGE 'plpgsql' VOLATILE SECURITY DEFINER;

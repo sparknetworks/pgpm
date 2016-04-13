@@ -94,6 +94,7 @@ setup(
         'pgpm': [
             'lib/db_scripts/*.sql',
             'lib/db_scripts/functions/*',
+            'lib/db_scripts/triggers/*',
             'lib/db_scripts/migrations/*'
         ]
     }

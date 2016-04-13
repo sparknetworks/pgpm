@@ -40,7 +40,9 @@ class InstallationManager(pgpm.lib.abstract_deploy.AbstractDeploymentManager):
         cur = self._conn.cursor()
 
         # get pgpm functions
-        scripts_dict = pgpm.lib.utils.misc.collect_scripts_from_sources('lib/db_scripts/functions', False, '.', True,
+        functions_dict = pgpm.lib.utils.misc.collect_scripts_from_sources('lib/db_scripts/functions', False, '.', True,
+                                                                        self._logger)
+        triggers_dict = pgpm.lib.utils.misc.collect_scripts_from_sources('lib/db_scripts/triggers', False, '.', True,
                                                                         self._logger)
 
         # get current user
@@ -57,19 +59,17 @@ class InstallationManager(pgpm.lib.abstract_deploy.AbstractDeploymentManager):
 
         # Create schema if it doesn't exist
         if pgpm.lib.utils.db.SqlScriptsHelper.schema_exists(cur, self._pgpm_schema_name):
-            # Executing pgpm functions
-            if len(scripts_dict) > 0:
+
+            # Executing pgpm trigger functions
+            if len(triggers_dict) > 0:
                 self._logger.info('Running functions definitions scripts')
-                self._logger.debug(scripts_dict)
+                self._logger.debug(triggers_dict)
                 pgpm.lib.utils.db.SqlScriptsHelper.set_search_path(cur, self._pgpm_schema_name)
-                for key, value in scripts_dict.items():
-                    if value:
-                        cur.execute(value)
+                for key, value in triggers_dict.items():
+                    cur.execute(value)
                 self._logger.debug('Functions loaded to schema {0}'.format(self._pgpm_schema_name))
             else:
                 self._logger.debug('No function scripts to deploy')
-
-            self._conn.commit()
 
             # check installed version of _pgpm schema.
             pgpm_v_db_tuple = pgpm.lib.utils.db.SqlScriptsHelper.get_pgpm_db_version(cur, self._pgpm_schema_name)
@@ -89,6 +89,19 @@ class InstallationManager(pgpm.lib.abstract_deploy.AbstractDeploymentManager):
                 self._logger.error('Can\'t install pgpm as schema {0} already exists'.format(self._pgpm_schema_name))
                 self._conn.close()
                 sys.exit(1)
+
+            # Executing pgpm functions
+            if len(functions_dict) > 0:
+                self._logger.info('Running functions definitions scripts')
+                self._logger.debug(functions_dict)
+                pgpm.lib.utils.db.SqlScriptsHelper.set_search_path(cur, self._pgpm_schema_name)
+                for key, value in functions_dict.items():
+                    if value:
+                        cur.execute(value)
+                self._logger.debug('Functions loaded to schema {0}'.format(self._pgpm_schema_name))
+            else:
+                self._logger.debug('No function scripts to deploy')
+
         else:
             # Prepare and execute preamble
             deployment_script_preamble = pkgutil.get_data(self._main_module_name, 'lib/db_scripts/deploy_prepare_config.sql')
@@ -101,18 +114,20 @@ class InstallationManager(pgpm.lib.abstract_deploy.AbstractDeploymentManager):
             cur.execute(install_script.format(schema_name=self._pgpm_schema_name))
             migration_files_list = sorted(pkg_resources.resource_listdir(self._main_module_name, 'lib/db_scripts/migrations/'),
                                           key=lambda filename: distutils.version.StrictVersion(filename.split('-')[0]))
-            # Executing pgpm functions
-            if len(scripts_dict) > 0:
+
+            # Executing pgpm trigger functions
+            if len(triggers_dict) > 0:
                 self._logger.info('Running functions definitions scripts')
-                self._logger.debug(scripts_dict)
+                self._logger.debug(triggers_dict)
                 pgpm.lib.utils.db.SqlScriptsHelper.set_search_path(cur, self._pgpm_schema_name)
-                for key, value in scripts_dict.items():
+                for key, value in triggers_dict.items():
                     cur.execute(value)
                 self._logger.debug('Functions loaded to schema {0}'.format(self._pgpm_schema_name))
             else:
                 self._logger.debug('No function scripts to deploy')
 
-            # Executing migration scripts after as they contain triggers that trigger functions that were created on top
+            # Executing migration scripts after trigger functions
+            # as they may contain trigger definitions that use functions from pgpm
             for file_info in migration_files_list:
                 # Python 3.x doesn't have format for byte strings so we have to convert
                 migration_script = pkg_resources.resource_string(self._main_module_name, 'lib/db_scripts/migrations/{0}'.format(file_info))\
@@ -121,10 +136,25 @@ class InstallationManager(pgpm.lib.abstract_deploy.AbstractDeploymentManager):
                 self._logger.debug(migration_script)
                 cur.execute(migration_script)
 
+            # Executing pgpm functions
+            if len(functions_dict) > 0:
+                self._logger.info('Running functions definitions scripts')
+                self._logger.debug(functions_dict)
+                pgpm.lib.utils.db.SqlScriptsHelper.set_search_path(cur, self._pgpm_schema_name)
+                for key, value in functions_dict.items():
+                    cur.execute(value)
+                self._logger.debug('Functions loaded to schema {0}'.format(self._pgpm_schema_name))
+            else:
+                self._logger.debug('No function scripts to deploy')
+
+            # call this function to put in a migration log that there was a migration to the last version
+            # it's a hack basically due to the fact in 0.0.7-0.1.3 migration script migration info was manually inserted
+            # to avoid differences we add migration info to the last version (although it wasn't really a migration)
+            # to be refactored
             cur.callproc('_add_migration_info', ['0.0.7', pgpm.lib.version.__version__])
-            self._conn.commit()
 
         # check if users of pgpm are specified
+        pgpm.lib.utils.db.SqlScriptsHelper.revoke_all(cur, self._pgpm_schema_name, 'public')
         if not user_roles:
             self._logger.debug('No user was specified to have permisions on _pgpm schema. '
                                'This means only user that installed _pgpm will be able to deploy. '

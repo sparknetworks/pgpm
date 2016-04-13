@@ -401,6 +401,7 @@ class DeploymentManager(pgpm.lib.abstract_deploy.AbstractDeploymentManager):
         # alter schema privileges if needed
         if (not files_deployment) and mode != 'overwrite' \
                 and self._config.scope == pgpm.lib.utils.config.SchemaConfiguration.SCHEMA_SCOPE:
+            pgpm.lib.utils.db.SqlScriptsHelper.revoke_all(cur, schema_name, 'public')
             if self._config.usage_roles:
                 pgpm.lib.utils.db.SqlScriptsHelper.grant_usage_privileges(
                     cur, schema_name, ', '.join(self._config.usage_roles))
