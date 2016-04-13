@@ -145,9 +145,13 @@ class DeploymentManager(pgpm.lib.abstract_deploy.AbstractDeploymentManager):
         if not files_deployment:
             return_value['trigger_scripts_requested'] = [key for key in trigger_scripts_dict]
 
-        table_scripts_dict_denormalised = self._get_scripts(self._config.tables_path, files_deployment,
-                                                            "tables", self._source_code_path)
-        table_scripts_dict = {os.path.split(k)[1]: v for k, v in table_scripts_dict_denormalised.items()}
+        # before with table scripts only file name was an identifier. Now whole relative path the file
+        # (relative to config.json)
+        # table_scripts_dict_denormalised = self._get_scripts(self._config.tables_path, files_deployment,
+        #                                                     "tables", self._source_code_path)
+        # table_scripts_dict = {os.path.split(k)[1]: v for k, v in table_scripts_dict_denormalised.items()}
+        table_scripts_dict = self._get_scripts(self._config.tables_path, files_deployment,
+                                               "tables", self._source_code_path)
         if not files_deployment:
             return_value['table_scripts_requested'] = [key for key in table_scripts_dict]
 
@@ -397,6 +401,7 @@ class DeploymentManager(pgpm.lib.abstract_deploy.AbstractDeploymentManager):
         # alter schema privileges if needed
         if (not files_deployment) and mode != 'overwrite' \
                 and self._config.scope == pgpm.lib.utils.config.SchemaConfiguration.SCHEMA_SCOPE:
+            pgpm.lib.utils.db.SqlScriptsHelper.revoke_all(cur, schema_name, 'public')
             if self._config.usage_roles:
                 pgpm.lib.utils.db.SqlScriptsHelper.grant_usage_privileges(
                     cur, schema_name, ', '.join(self._config.usage_roles))

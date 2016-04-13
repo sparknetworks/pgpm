@@ -188,6 +188,16 @@ class SqlScriptsHelper:
                     .format(schema_name, roles))
 
     @classmethod
+    def revoke_all(cls, cur, schema_name, roles):
+        """
+        Revoke all privileges from schema, tables, sequences and functions for a specific role
+        """
+        cur.execute('REVOKE ALL ON SCHEMA {0} FROM {1};'
+                    'REVOKE ALL ON ALL TABLES IN SCHEMA {0} FROM {1};'
+                    'REVOKE ALL ON ALL SEQUENCES IN SCHEMA {0} FROM {1};'
+                    'REVOKE ALL ON ALL FUNCTIONS IN SCHEMA {0} FROM {1};'.format(schema_name, roles))
+
+    @classmethod
     def set_search_path(cls, cur, schema_name):
         """
         Sets search path
