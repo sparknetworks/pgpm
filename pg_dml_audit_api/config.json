@@ -1,0 +1,8 @@
+{
+  "description": "Affinitas Audit API",
+  "name": "_pg_dml_audit_api",
+  "version": "00_01_00",
+  "subclass": "versioned",
+  "types_path": "types",
+  "functions_path": [ "functions", "triggers" ]
+}

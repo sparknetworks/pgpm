@@ -1,9 +1,0 @@
-{
-  "description": "Affinitas Audit API",
-  "name": "_audit",
-  "version": "00_01_00",
-  "class": "???",
-  "subclass": "???",
-  "types_path": "types",
-  "functions_path": "functions,triggers"
-}

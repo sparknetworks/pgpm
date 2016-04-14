@@ -1,9 +1,8 @@
 {
     "description"    : "Affinitas Audit Model" ,
-    "name"           : "_audit",
+    "name"           : "_pg_dml_audit_model",
     "version"        : "00_01_00",
-    "class"          : "???",
-    "subclass"       : "???",
+    "subclass"       : "basic",
     "types_path"     : "types",
     "tables_path"    : "tables"
 }

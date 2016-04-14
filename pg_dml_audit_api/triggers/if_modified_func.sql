@@ -1,7 +1,3 @@
---
---
---
-SET search_path TO audit, public;
 CREATE OR REPLACE FUNCTION if_modified_func()
   RETURNS TRIGGER AS $body$
 DECLARE
