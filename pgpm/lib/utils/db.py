@@ -104,7 +104,7 @@ class MegaCursor(psycopg2.extensions.cursor):
         except Exception:
             raise
         finally:
-            self.connection.logger.debug('Executed query: {0}'.format(self.query.decode('utf-8')))
+            self.connection.logger.debug('Executed query: {0}'.format(self.query))
             noticies = self.connection.fetch_new_notices()
             if noticies:
                 for notice in noticies:
