@@ -498,7 +498,7 @@ def _send_mail(arguments, global_config, target_string, config_object, deploy_re
         _git_repo_row = ''
         if pgpm.lib.utils.vcs.is_git_directory(os.path.abspath('.')):
             _git_repo_row += '<tr><th>GIT repo</th><td>'
-            _git_repo_row += pgpm.lib.utils.vcs.get_git_remote(os.path.abspath('.'))
+            _git_repo_row += pgpm.lib.utils.vcs.get_git_remote_url(os.path.abspath('.'))
             _git_repo_row += '</td></tr>'
             if not arguments['--vcs-ref']:
                 _git_commit_row += '<tr><th>GIT commit</th><td>'
@@ -576,7 +576,7 @@ def _comment_issue_tracker(arguments, global_config, target_string, config_objec
         _git_repo_row = ''
         if pgpm.lib.utils.vcs.is_git_directory(os.path.abspath('.')):
             _git_repo_row += '\n||GIT repo|'
-            _git_repo_row += pgpm.lib.utils.vcs.get_git_remote(os.path.abspath('.'))
+            _git_repo_row += pgpm.lib.utils.vcs.get_git_remote_url(os.path.abspath('.'))
             _git_repo_row += '|'
             if not arguments['--vcs-ref']:
                 _git_commit_row += '\n||GIT commit|'
