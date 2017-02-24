@@ -31,13 +31,36 @@ Note: ``config.json`` file must be present in a root directory of the package in
 
 Config
 ``````
-``pgpm`` uses config.json file for a configuration of a package. Configuration file must be a single valid JSON object with the following properties:
+``pgpm`` uses ``config.json`` file for a configuration of a package. Configuration file must be a single valid JSON object with the following properties:
 
-===============  ===================  ============  =============
- Property name    Required/Optional    Value         Description
-===============  ===================  ============  =============
- ``name``         required             ``string``    Name of the package
-===============  ===================  ============  =============
+=========================  ===================  ============================================================================== =============
+ Property name              Required/Optional    Value                                                                          Description
+=========================  ===================  ============================================================================== =============
+ ``name``                   required             ``string``                                                                     Name of the package (for details see section 'Name of the package')
+ ``description``            optional             ``string``                                                                     Description of the package
+ ``subclass``               required             ``string``, accepts values: ``basic`` and ``versioned``                        Type of the package when deployed as a DB schema.
+                                                                                                                                For details see section 'Versioned or not versioned schema'
+ ``scope``                  required             ``string``, accepts values: ``SCHEMA`` and ``DATABASE``,                       Whether the the deployment should be bound to a specific schema or be for the whole DB.
+                                                 defaults to ``SCHEMA``                                                         For details see section 'Scope of package'.
+ ``version``                required             ``string``, accepts values with the following format:                          Version of the package.
+                                                 [0..9][0..9]_[0..9][0..9]_[0..9][0..9]                                         For details see section 'Versioned or not versioned schema'.
+ ``functions_path``         optional             ``string``                                                                     A relative path (relative to the root directory of the package) to the folder with source code for stored procedures
+                                                                                                                                For details see section 'Object types'.
+ ``tables_path``            optional             ``string``                                                                     A relative path (relative to the root directory of the package) to the folder with sql scripts that change table definitions
+                                                                                                                                For details see section 'Object types'.
+ ``types_path``             optional             ``string``                                                                     A relative path (relative to the root directory of the package) to the folder with source code for types definitions
+                                                                                                                                For details see section 'Object types'.
+ ``triggers_path``          optional             ``string``                                                                     A relative path (relative to the root directory of the package) to the folder with source code for triggers (not trigger functions, they go to ``functions_path``)
+                                                                                                                                For details see section 'Object types'.
+=========================  ===================  ============================================================================== =============
+
+Name of the package
+'''''''''''''''''''
+TODO
+
+Versioned or not versioned schema
+'''''''''''''''''''''''''''''''''
+TODO
 
 Scope of package
 ''''''''''''''''
