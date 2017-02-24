@@ -58,6 +58,9 @@ Name of the package
 '''''''''''''''''''
 TODO
 
+Test info
+'''''''''
+
 Versioned or not versioned schema
 '''''''''''''''''''''''''''''''''
 TODO
